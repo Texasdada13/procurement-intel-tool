@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+
+{% block title %}RFP Opportunities - Procurement Intel{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-6">
+        <h1><i class="bi bi-file-earmark-text"></i> RFP Opportunities</h1>
+        <p class="text-muted">IT/Consulting RFPs from Florida government agencies</p>
+    </div>
+    <div class="col-md-6 text-end">
+        <a href="{{ url_for('rfp_discover_page') }}" class="btn btn-primary">
+            <i class="bi bi-search"></i> Discover RFPs
+        </a>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <h4>{{ stats.open_rfps }}</h4>
+                <p class="mb-0">Open RFPs</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <h4>{{ stats.relevant_rfps }}</h4>
+                <p class="mb-0">Relevant (IT/Consulting)</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-dark">
+            <div class="card-body">
+                <h4>{{ stats.closing_soon }}</h4>
+                <p class="mb-0">Closing in 7 Days</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-secondary text-white">
+            <div class="card-body">
+                <h4>{{ stats.total_rfps }}</h4>
+                <p class="mb-0">Total RFPs</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Status</label>
+                <select name="status" class="form-select">
+                    <option value="open" {{ 'selected' if status_filter == 'open' }}>Open</option>
+                    <option value="all" {{ 'selected' if not status_filter }}>All</option>
+                    <option value="closed" {{ 'selected' if status_filter == 'closed' }}>Closed</option>
+                    <option value="awarded" {{ 'selected' if status_filter == 'awarded' }}>Awarded</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Category</label>
+                <select name="category" class="form-select">
+                    <option value="">All Categories</option>
+                    <option value="it_consulting" {{ 'selected' if category_filter == 'it_consulting' }}>IT Consulting</option>
+                    <option value="software" {{ 'selected' if category_filter == 'software' }}>Software</option>
+                    <option value="study" {{ 'selected' if category_filter == 'study' }}>Studies & Analysis</option>
+                    <option value="professional_services" {{ 'selected' if category_filter == 'professional_services' }}>Professional Services</option>
+                    <option value="data" {{ 'selected' if category_filter == 'data' }}>Data & Analytics</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="relevant" value="true" id="relevantCheck" {{ 'checked' if relevant_only }}>
+                    <label class="form-check-label" for="relevantCheck">
+                        IT/Consulting Only
+                    </label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-outline-primary w-100">
+                    <i class="bi bi-filter"></i> Apply Filters
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- RFPs Table -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Score</th>
+                        <th>Title</th>
+                        <th>Agency</th>
+                        <th>Category</th>
+                        <th>Type</th>
+                        <th>Due Date</th>
+                        <th>Source</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rfp in rfps %}
+                    <tr class="{{ 'table-success' if rfp.is_relevant else '' }}">
+                        <td>
+                            {% if rfp.is_relevant %}
+                            <span class="badge rounded-pill fs-6 bg-{{ 'success' if rfp.relevance_score >= 5 else 'info' if rfp.relevance_score >= 2.5 else 'secondary' }}">
+                                {{ "%.1f"|format(rfp.relevance_score) }}
+                            </span>
+                            {% else %}
+                            <span class="badge rounded-pill fs-6 bg-light text-dark">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('rfp_detail', rfp_id=rfp.id) }}">
+                                {{ rfp.title[:60] }}{% if rfp.title|length > 60 %}...{% endif %}
+                            </a>
+                            {% if rfp.is_relevant %}
+                            <i class="bi bi-star-fill text-warning ms-1" title="Relevant to your services"></i>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if rfp.entity_name %}
+                            <strong>{{ rfp.entity_name }}</strong><br>
+                            <small class="text-muted">{{ rfp.entity_type|title if rfp.entity_type else '' }}</small>
+                            {% else %}
+                            <span class="text-muted">Unknown</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if rfp.category %}
+                            <span class="badge bg-{{ 'primary' if rfp.category == 'it_consulting' else 'success' if rfp.category == 'software' else 'info' if rfp.category == 'study' else 'secondary' }}">
+                                {{ rfp.category|replace('_', ' ')|title }}
+                            </span>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-outline-secondary">{{ rfp.rfp_type or 'RFP' }}</span>
+                        </td>
+                        <td>
+                            {% if rfp.due_date %}
+                            <span class="{{ 'text-danger fw-bold' if rfp.due_date[:10] <= (now|string)[:10] else '' }}">
+                                {{ rfp.due_date[:10] }}
+                            </span>
+                            {% else %}
+                            <span class="text-muted">TBD</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <small class="text-muted">{{ rfp.source_portal or 'manual' }}</small>
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('rfp_detail', rfp_id=rfp.id) }}" class="btn btn-outline-primary" title="View Details">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                {% if rfp.source_url %}
+                                <a href="{{ rfp.source_url }}" target="_blank" class="btn btn-outline-secondary" title="View Source">
+                                    <i class="bi bi-box-arrow-up-right"></i>
+                                </a>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="text-center py-5">
+                            <i class="bi bi-file-earmark-x fs-1 text-muted d-block mb-3"></i>
+                            <p class="text-muted mb-3">No RFPs match your filters</p>
+                            <a href="{{ url_for('rfp_discover_page') }}" class="btn btn-primary">
+                                <i class="bi bi-search"></i> Discover RFPs
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Category Summary -->
+{% if stats.by_category %}
+<div class="card mt-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-bar-chart"></i> RFPs by Category</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            {% for cat, count in stats.by_category.items() %}
+            <div class="col-md-2">
+                <div class="text-center">
+                    <h4>{{ count }}</h4>
+                    <small class="text-muted">{{ cat|replace('_', ' ')|title }}</small>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

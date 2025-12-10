@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}Opportunities - Procurement Intel{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-6">
+        <h1><i class="bi bi-fire"></i> Opportunities</h1>
+        <p class="text-muted">{{ opportunities|length }} opportunities found</p>
+    </div>
+    <div class="col-md-6 text-end">
+        <a href="{{ url_for('discover_page') }}" class="btn btn-primary">
+            <i class="bi bi-plus-circle"></i> Discover New
+        </a>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Status</label>
+                <select name="status" class="form-select">
+                    <option value="">All Statuses</option>
+                    <option value="new" {{ 'selected' if status_filter == 'new' }}>New</option>
+                    <option value="researching" {{ 'selected' if status_filter == 'researching' }}>Researching</option>
+                    <option value="contacted" {{ 'selected' if status_filter == 'contacted' }}>Contacted</option>
+                    <option value="in_discussion" {{ 'selected' if status_filter == 'in_discussion' }}>In Discussion</option>
+                    <option value="closed_won" {{ 'selected' if status_filter == 'closed_won' }}>Closed Won</option>
+                    <option value="closed_lost" {{ 'selected' if status_filter == 'closed_lost' }}>Closed Lost</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Min Heat Score</label>
+                <input type="number" name="min_score" class="form-control" value="{{ min_score or '' }}" placeholder="0-100">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Sort By</label>
+                <select name="sort" class="form-select">
+                    <option value="heat_score" {{ 'selected' if sort_by == 'heat_score' }}>Heat Score</option>
+                    <option value="recent" {{ 'selected' if sort_by == 'recent' }}>Most Recent</option>
+                    <option value="entity" {{ 'selected' if sort_by == 'entity' }}>Entity Name</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-outline-primary w-100">
+                    <i class="bi bi-filter"></i> Apply Filters
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Opportunities Table -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Heat</th>
+                        <th>Entity</th>
+                        <th>Title</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Priority</th>
+                        <th>Detected</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for opp in opportunities %}
+                    <tr>
+                        <td>
+                            <span class="badge rounded-pill fs-6 bg-{{ 'danger' if opp.heat_score >= 70 else 'warning text-dark' if opp.heat_score >= 40 else 'secondary' }}">
+                                {{ opp.heat_score }}
+                            </span>
+                        </td>
+                        <td>
+                            <strong>{{ opp.entity_name }}</strong><br>
+                            <small class="text-muted">{{ opp.entity_type|title }} - {{ opp.state }}</small>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('opportunity_detail', opportunity_id=opp.id) }}">
+                                {{ opp.title[:50] }}{% if opp.title|length > 50 %}...{% endif %}
+                            </a>
+                        </td>
+                        <td>
+                            <span class="badge bg-{{ 'danger' if opp.issue_type == 'legal' else 'warning text-dark' if opp.issue_type == 'procurement' else 'info' if opp.issue_type == 'ethics' else 'primary' if opp.issue_type == 'audit' else 'secondary' }}">
+                                {{ opp.issue_type|title if opp.issue_type else 'Unknown' }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge bg-{{ 'primary' if opp.status == 'new' else 'info' if opp.status == 'researching' else 'warning text-dark' if opp.status == 'contacted' else 'success' if opp.status == 'in_discussion' else 'secondary' }}">
+                                {{ opp.status|replace('_', ' ')|title }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge bg-{{ 'danger' if opp.priority == 'urgent' else 'warning text-dark' if opp.priority == 'high' else 'info' if opp.priority == 'medium' else 'secondary' }}">
+                                {{ opp.priority|title }}
+                            </span>
+                        </td>
+                        <td>
+                            <small>{{ opp.first_detected[:10] if opp.first_detected else 'Unknown' }}</small>
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('opportunity_detail', opportunity_id=opp.id) }}" class="btn btn-outline-primary" title="View Details">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="text-center py-5">
+                            <i class="bi bi-inbox fs-1 text-muted d-block mb-3"></i>
+                            <p class="text-muted mb-3">No opportunities match your filters</p>
+                            <a href="{{ url_for('discover_page') }}" class="btn btn-primary">
+                                <i class="bi bi-search"></i> Discover Opportunities
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

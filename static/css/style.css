@@ -1,0 +1,226 @@
+/* Procurement Intelligence Tool - Custom Styles */
+
+/* Root variables */
+:root {
+    --primary-color: #0d6efd;
+    --danger-color: #dc3545;
+    --warning-color: #ffc107;
+    --success-color: #198754;
+    --info-color: #0dcaf0;
+}
+
+/* Base styles */
+body {
+    background-color: #f8f9fa;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+main {
+    flex: 1;
+}
+
+/* Navbar */
+.navbar-brand {
+    font-weight: 700;
+}
+
+/* Cards */
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    border: none;
+}
+
+.card-header {
+    background-color: white;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+    font-weight: 600;
+}
+
+/* Heat score badges */
+.badge.rounded-pill {
+    font-weight: 600;
+}
+
+/* Table improvements */
+.table th {
+    font-weight: 600;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.table td {
+    vertical-align: middle;
+}
+
+/* Status badges */
+.badge.bg-new {
+    background-color: var(--primary-color) !important;
+}
+
+.badge.bg-researching {
+    background-color: var(--info-color) !important;
+}
+
+.badge.bg-contacted {
+    background-color: var(--warning-color) !important;
+    color: #000 !important;
+}
+
+.badge.bg-in_discussion,
+.badge.bg-in-discussion {
+    background-color: var(--success-color) !important;
+}
+
+.badge.bg-closed_won,
+.badge.bg-closed-won {
+    background-color: #20c997 !important;
+}
+
+.badge.bg-closed_lost,
+.badge.bg-closed-lost {
+    background-color: #6c757d !important;
+}
+
+/* List group improvements */
+.list-group-item-action:hover {
+    background-color: #f8f9fa;
+}
+
+/* Attack brief styling */
+.attack-brief {
+    font-size: 0.95rem;
+    line-height: 1.7;
+}
+
+.attack-brief h5 {
+    color: var(--primary-color);
+    margin-top: 1rem;
+    font-size: 1.1rem;
+}
+
+.attack-brief h6 {
+    color: #495057;
+    margin-top: 0.75rem;
+    font-size: 1rem;
+}
+
+.attack-brief li {
+    margin-bottom: 0.5rem;
+}
+
+/* Progress bars */
+.progress {
+    background-color: #e9ecef;
+}
+
+/* Form improvements */
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
+}
+
+/* Stat cards */
+.card.bg-primary,
+.card.bg-danger,
+.card.bg-success,
+.card.bg-info {
+    border: none;
+}
+
+.card.bg-primary .card-body,
+.card.bg-danger .card-body,
+.card.bg-success .card-body,
+.card.bg-info .card-body {
+    padding: 1.25rem;
+}
+
+/* Pipeline status boxes */
+.p-3.border.rounded h3 {
+    font-size: 2rem;
+    margin-bottom: 0.25rem;
+}
+
+/* Footer */
+.footer {
+    margin-top: auto;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .card-body {
+        padding: 1rem;
+    }
+
+    .table-responsive {
+        font-size: 0.875rem;
+    }
+
+    h1 {
+        font-size: 1.75rem;
+    }
+}
+
+/* Custom scrollbar for card bodies */
+.card-body[style*="overflow-y"] {
+    scrollbar-width: thin;
+    scrollbar-color: #dee2e6 #f8f9fa;
+}
+
+.card-body[style*="overflow-y"]::-webkit-scrollbar {
+    width: 6px;
+}
+
+.card-body[style*="overflow-y"]::-webkit-scrollbar-track {
+    background: #f8f9fa;
+}
+
+.card-body[style*="overflow-y"]::-webkit-scrollbar-thumb {
+    background-color: #dee2e6;
+    border-radius: 3px;
+}
+
+/* Hover effects */
+.btn {
+    transition: all 0.2s ease;
+}
+
+.card {
+    transition: box-shadow 0.2s ease;
+}
+
+.card:hover {
+    box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.1);
+}
+
+/* Link improvements */
+a {
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+.btn a:hover,
+.navbar a:hover,
+.list-group-item a:hover {
+    text-decoration: none;
+}
+
+/* Print styles */
+@media print {
+    .navbar,
+    .btn,
+    form {
+        display: none !important;
+    }
+
+    .card {
+        box-shadow: none;
+        border: 1px solid #dee2e6;
+    }
+}

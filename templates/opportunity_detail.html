@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+
+{% block title %}{{ opportunity.entity_name }} - Procurement Intel{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('opportunities_list') }}">Opportunities</a></li>
+                <li class="breadcrumb-item active">{{ opportunity.entity_name }}</li>
+            </ol>
+        </nav>
+        <h1>{{ opportunity.entity_name }}</h1>
+        <p class="text-muted">{{ opportunity.entity_type|title }} - {{ opportunity.state }}{% if opportunity.county %}, {{ opportunity.county }} County{% endif %}</p>
+    </div>
+    <div class="col-md-4 text-end">
+        <span class="badge rounded-pill fs-4 bg-{{ 'danger' if opportunity.heat_score >= 70 else 'warning text-dark' if opportunity.heat_score >= 40 else 'secondary' }}">
+            <i class="bi bi-fire"></i> {{ opportunity.heat_score }}
+        </span>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Main Content -->
+    <div class="col-md-8">
+        <!-- Issue Summary -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Issue Summary</h5>
+            </div>
+            <div class="card-body">
+                <h6>{{ opportunity.title }}</h6>
+                <p>{{ opportunity.summary or 'No summary available.' }}</p>
+                <div class="d-flex gap-2">
+                    <span class="badge bg-{{ 'danger' if opportunity.issue_type == 'legal' else 'warning text-dark' if opportunity.issue_type == 'procurement' else 'info' if opportunity.issue_type == 'ethics' else 'primary' if opportunity.issue_type == 'audit' else 'secondary' }}">
+                        {{ opportunity.issue_type|title if opportunity.issue_type else 'Unknown' }} Issue
+                    </span>
+                    <span class="badge bg-{{ 'danger' if opportunity.priority == 'urgent' else 'warning text-dark' if opportunity.priority == 'high' else 'info' if opportunity.priority == 'medium' else 'secondary' }}">
+                        {{ opportunity.priority|title }} Priority
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Attack Brief -->
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-bullseye"></i> Attack Brief</h5>
+            </div>
+            <div class="card-body">
+                {% if opportunity.attack_brief %}
+                <div class="attack-brief">
+                    {{ opportunity.attack_brief|safe|replace('\n', '<br>')|replace('## ', '<h5>')|replace('### ', '<h6>')|replace('- ', '<li>') }}
+                </div>
+                {% else %}
+                <p class="text-muted">No attack brief generated yet.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Related Articles -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-newspaper"></i> Related Articles ({{ articles|length }})</h5>
+            </div>
+            <div class="card-body">
+                {% for article in articles %}
+                <div class="border-bottom pb-3 mb-3">
+                    <h6>
+                        <a href="{{ article.url }}" target="_blank">
+                            {{ article.title }}
+                            <i class="bi bi-box-arrow-up-right small"></i>
+                        </a>
+                    </h6>
+                    <p class="text-muted small mb-2">
+                        {% if article.source_name %}{{ article.source_name }} | {% endif %}
+                        {{ article.published_date[:10] if article.published_date else 'Unknown date' }}
+                    </p>
+                    <p class="small">{{ article.summary[:200] if article.summary else '' }}{% if article.summary and article.summary|length > 200 %}...{% endif %}</p>
+                </div>
+                {% else %}
+                <p class="text-muted">No articles linked to this opportunity.</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Activity Log -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-clock-history"></i> Activity Log</h5>
+            </div>
+            <div class="card-body">
+                {% for activity in activities %}
+                <div class="d-flex mb-3">
+                    <div class="me-3">
+                        <span class="badge rounded-pill bg-{{ 'success' if 'created' in activity.activity_type else 'info' if 'note' in activity.activity_type else 'warning' if 'status' in activity.activity_type else 'secondary' }}">
+                            <i class="bi bi-{{ 'plus' if 'created' in activity.activity_type else 'pencil' if 'note' in activity.activity_type else 'arrow-right' if 'status' in activity.activity_type else 'record' }}"></i>
+                        </span>
+                    </div>
+                    <div>
+                        <strong>{{ activity.activity_type|replace('_', ' ')|title }}</strong>
+                        <p class="mb-0 text-muted small">{{ activity.description }}</p>
+                        <small class="text-muted">{{ activity.created_at }}</small>
+                    </div>
+                </div>
+                {% else %}
+                <p class="text-muted">No activity recorded yet.</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Notes -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-journal-text"></i> Notes</h5>
+            </div>
+            <div class="card-body">
+                {% if opportunity.notes %}
+                <pre class="bg-light p-3 rounded" style="white-space: pre-wrap;">{{ opportunity.notes }}</pre>
+                {% else %}
+                <p class="text-muted">No notes yet.</p>
+                {% endif %}
+
+                <hr>
+                <form method="post" action="{{ url_for('add_note', opportunity_id=opportunity.id) }}">
+                    <div class="mb-3">
+                        <label class="form-label">Add Note</label>
+                        <textarea name="note" class="form-control" rows="3" placeholder="Add a note about this opportunity..."></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-outline-primary">
+                        <i class="bi bi-plus"></i> Add Note
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="col-md-4">
+        <!-- Status & Actions -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-gear"></i> Manage Opportunity</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{{ url_for('update_opportunity', opportunity_id=opportunity.id) }}">
+                    <div class="mb-3">
+                        <label class="form-label">Status</label>
+                        <select name="status" class="form-select">
+                            <option value="new" {{ 'selected' if opportunity.status == 'new' }}>New</option>
+                            <option value="researching" {{ 'selected' if opportunity.status == 'researching' }}>Researching</option>
+                            <option value="contacted" {{ 'selected' if opportunity.status == 'contacted' }}>Contacted</option>
+                            <option value="in_discussion" {{ 'selected' if opportunity.status == 'in_discussion' }}>In Discussion</option>
+                            <option value="closed_won" {{ 'selected' if opportunity.status == 'closed_won' }}>Closed Won</option>
+                            <option value="closed_lost" {{ 'selected' if opportunity.status == 'closed_lost' }}>Closed Lost</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Priority</label>
+                        <select name="priority" class="form-select">
+                            <option value="low" {{ 'selected' if opportunity.priority == 'low' }}>Low</option>
+                            <option value="medium" {{ 'selected' if opportunity.priority == 'medium' }}>Medium</option>
+                            <option value="high" {{ 'selected' if opportunity.priority == 'high' }}>High</option>
+                            <option value="urgent" {{ 'selected' if opportunity.priority == 'urgent' }}>Urgent</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-check"></i> Update
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Score Breakdown -->
+        {% if score_breakdown %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-bar-chart"></i> Score Breakdown</h5>
+            </div>
+            <div class="card-body">
+                {% for factor, data in score_breakdown.factors.items() %}
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <small>{{ factor|replace('_', ' ')|title }}</small>
+                        <small>{{ data.raw_score|round(1) }} x {{ data.weight }}</small>
+                    </div>
+                    <div class="progress" style="height: 8px;">
+                        <div class="progress-bar" style="width: {{ data.raw_score }}%"></div>
+                    </div>
+                </div>
+                {% endfor %}
+                <hr>
+                <div class="d-flex justify-content-between">
+                    <strong>Final Score</strong>
+                    <strong class="text-{{ 'danger' if score_breakdown.final_score >= 70 else 'warning' if score_breakdown.final_score >= 40 else 'secondary' }}">
+                        {{ score_breakdown.final_score }}
+                    </strong>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Entity Info -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-building"></i> Entity Details</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Name:</strong> {{ entity.name }}</p>
+                <p><strong>Type:</strong> {{ entity.entity_type|title }}</p>
+                <p><strong>State:</strong> {{ entity.state }}</p>
+                {% if entity.county %}<p><strong>County:</strong> {{ entity.county }}</p>{% endif %}
+                {% if entity.population %}<p><strong>Population:</strong> {{ "{:,}".format(entity.population) }}</p>{% endif %}
+                {% if entity.annual_budget %}<p><strong>Annual Budget:</strong> ${{ "{:,.0f}".format(entity.annual_budget) }}</p>{% endif %}
+                {% if entity.website %}
+                <p><strong>Website:</strong> <a href="{{ entity.website }}" target="_blank">{{ entity.website }}</a></p>
+                {% endif %}
+                <a href="{{ url_for('entity_detail', entity_id=entity.id) }}" class="btn btn-outline-primary btn-sm w-100">
+                    View Full Entity Profile
+                </a>
+            </div>
+        </div>
+
+        <!-- Contacts -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-people"></i> Contacts</h5>
+                <a href="{{ url_for('entity_detail', entity_id=entity.id) }}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-plus"></i>
+                </a>
+            </div>
+            <div class="card-body">
+                {% for contact in contacts %}
+                <div class="mb-3 pb-2 border-bottom">
+                    <strong>{{ contact.name }}</strong>
+                    {% if contact.title %}<br><small class="text-muted">{{ contact.title }}</small>{% endif %}
+                    {% if contact.email %}<br><small><a href="mailto:{{ contact.email }}">{{ contact.email }}</a></small>{% endif %}
+                    {% if contact.phone %}<br><small>{{ contact.phone }}</small>{% endif %}
+                </div>
+                {% else %}
+                <p class="text-muted small">No contacts added yet.</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Quick Info -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> Quick Info</h5>
+            </div>
+            <div class="card-body">
+                <p class="mb-2"><strong>First Detected:</strong><br>{{ opportunity.first_detected[:19] if opportunity.first_detected else 'Unknown' }}</p>
+                <p class="mb-2"><strong>Last Activity:</strong><br>{{ opportunity.last_activity[:19] if opportunity.last_activity else 'Unknown' }}</p>
+                <p class="mb-0"><strong>Opportunity ID:</strong><br>#{{ opportunity.id }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

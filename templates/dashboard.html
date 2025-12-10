@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Procurement Intel{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1><i class="bi bi-speedometer2"></i> Intelligence Dashboard</h1>
+        <p class="text-muted">Overview of procurement opportunities and leads</p>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title mb-0">Total Opportunities</h6>
+                        <h2 class="mb-0">{{ stats.total_opportunities }}</h2>
+                    </div>
+                    <i class="bi bi-fire fs-1 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-danger text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title mb-0">High Heat (70+)</h6>
+                        <h2 class="mb-0">{{ stats.high_heat_count }}</h2>
+                    </div>
+                    <i class="bi bi-thermometer-high fs-1 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title mb-0">New This Week</h6>
+                        <h2 class="mb-0">{{ stats.new_this_week }}</h2>
+                    </div>
+                    <i class="bi bi-calendar-plus fs-1 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title mb-0">Entities Tracked</h6>
+                        <h2 class="mb-0">{{ stats.total_entities }}</h2>
+                    </div>
+                    <i class="bi bi-building fs-1 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Pipeline Overview -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-funnel"></i> Pipeline Status</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col">
+                        <div class="p-3 border rounded">
+                            <h3 class="text-primary">{{ stats.opportunities_by_status.get('new', 0) }}</h3>
+                            <small class="text-muted">New</small>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="p-3 border rounded">
+                            <h3 class="text-info">{{ stats.opportunities_by_status.get('researching', 0) }}</h3>
+                            <small class="text-muted">Researching</small>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="p-3 border rounded">
+                            <h3 class="text-warning">{{ stats.opportunities_by_status.get('contacted', 0) }}</h3>
+                            <small class="text-muted">Contacted</small>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="p-3 border rounded">
+                            <h3 class="text-success">{{ stats.opportunities_by_status.get('in_discussion', 0) }}</h3>
+                            <small class="text-muted">In Discussion</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-tags"></i> By Issue Type</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    {% for issue_type, count in stats.opportunities_by_type.items() %}
+                    <div class="col-6 mb-2">
+                        <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded">
+                            <span class="badge bg-{{ 'danger' if issue_type == 'legal' else 'warning' if issue_type == 'procurement' else 'info' if issue_type == 'ethics' else 'secondary' }}">
+                                {{ issue_type|title }}
+                            </span>
+                            <strong>{{ count }}</strong>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Top Opportunities -->
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-fire text-danger"></i> Hottest Opportunities</h5>
+                <a href="{{ url_for('opportunities_list', sort='heat_score') }}" class="btn btn-sm btn-outline-primary">View All</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush">
+                    {% for opp in top_opportunities %}
+                    <a href="{{ url_for('opportunity_detail', opportunity_id=opp.id) }}" class="list-group-item list-group-item-action">
+                        <div class="d-flex w-100 justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-1">{{ opp.entity_name }}</h6>
+                                <small class="text-muted">{{ opp.title[:60] }}{% if opp.title|length > 60 %}...{% endif %}</small>
+                            </div>
+                            <div class="text-end">
+                                <span class="badge rounded-pill bg-{{ 'danger' if opp.heat_score >= 70 else 'warning' if opp.heat_score >= 40 else 'secondary' }}">
+                                    {{ opp.heat_score }}
+                                </span>
+                                <br>
+                                <small class="text-muted">{{ opp.entity_type }}</small>
+                            </div>
+                        </div>
+                    </a>
+                    {% else %}
+                    <div class="list-group-item text-center text-muted py-4">
+                        <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                        No opportunities yet. <a href="{{ url_for('discover_page') }}">Start discovering</a>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-clock-history"></i> Recent Discoveries</h5>
+                <a href="{{ url_for('opportunities_list', sort='recent') }}" class="btn btn-sm btn-outline-primary">View All</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush">
+                    {% for opp in recent_opportunities %}
+                    <a href="{{ url_for('opportunity_detail', opportunity_id=opp.id) }}" class="list-group-item list-group-item-action">
+                        <div class="d-flex w-100 justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-1">{{ opp.entity_name }}</h6>
+                                <small class="text-muted">{{ opp.title[:60] }}{% if opp.title|length > 60 %}...{% endif %}</small>
+                            </div>
+                            <div class="text-end">
+                                <span class="badge bg-{{ opp.status|replace('_', '-') }}">{{ opp.status }}</span>
+                                <br>
+                                <small class="text-muted">{{ opp.first_detected[:10] if opp.first_detected else 'Unknown' }}</small>
+                            </div>
+                        </div>
+                    </a>
+                    {% else %}
+                    <div class="list-group-item text-center text-muted py-4">
+                        <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                        No opportunities yet. <a href="{{ url_for('discover_page') }}">Start discovering</a>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-lightning"></i> Quick Actions</h5>
+                <a href="{{ url_for('discover_page') }}" class="btn btn-primary me-2">
+                    <i class="bi bi-search"></i> Run Discovery
+                </a>
+                <a href="{{ url_for('opportunities_list', status='new') }}" class="btn btn-outline-primary me-2">
+                    <i class="bi bi-inbox"></i> View New Leads
+                </a>
+                <a href="{{ url_for('opportunities_list', min_score=70) }}" class="btn btn-outline-danger">
+                    <i class="bi bi-fire"></i> High Priority Only
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

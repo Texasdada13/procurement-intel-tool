@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}{{ entity.name }} - Procurement Intel{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('entities_list') }}">Entities</a></li>
+                <li class="breadcrumb-item active">{{ entity.name }}</li>
+            </ol>
+        </nav>
+        <h1>{{ entity.name }}</h1>
+        <span class="badge bg-{{ 'primary' if entity.entity_type == 'county' else 'success' if entity.entity_type == 'school_board' else 'info' if entity.entity_type == 'city' else 'secondary' }} fs-6">
+            {{ entity.entity_type|replace('_', ' ')|title }}
+        </span>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Entity Details -->
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> Entity Details</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <tr>
+                        <th>Name</th>
+                        <td>{{ entity.name }}</td>
+                    </tr>
+                    <tr>
+                        <th>Type</th>
+                        <td>{{ entity.entity_type|replace('_', ' ')|title }}</td>
+                    </tr>
+                    <tr>
+                        <th>State</th>
+                        <td>{{ entity.state }}</td>
+                    </tr>
+                    {% if entity.county %}
+                    <tr>
+                        <th>County</th>
+                        <td>{{ entity.county }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if entity.population %}
+                    <tr>
+                        <th>Population</th>
+                        <td>{{ "{:,}".format(entity.population) }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if entity.annual_budget %}
+                    <tr>
+                        <th>Annual Budget</th>
+                        <td>${{ "{:,.0f}".format(entity.annual_budget) }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if entity.website %}
+                    <tr>
+                        <th>Website</th>
+                        <td><a href="{{ entity.website }}" target="_blank">{{ entity.website }}</a></td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+
+        <!-- Contacts -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-people"></i> Contacts</h5>
+            </div>
+            <div class="card-body">
+                {% for contact in contacts %}
+                <div class="mb-3 pb-3 border-bottom">
+                    <strong>{{ contact.name }}</strong>
+                    {% if contact.title %}<br><small class="text-muted">{{ contact.title }}</small>{% endif %}
+                    {% if contact.role %}<br><span class="badge bg-secondary">{{ contact.role }}</span>{% endif %}
+                    {% if contact.email %}<br><i class="bi bi-envelope"></i> <a href="mailto:{{ contact.email }}">{{ contact.email }}</a>{% endif %}
+                    {% if contact.phone %}<br><i class="bi bi-telephone"></i> {{ contact.phone }}{% endif %}
+                    {% if contact.linkedin %}<br><i class="bi bi-linkedin"></i> <a href="{{ contact.linkedin }}" target="_blank">LinkedIn</a>{% endif %}
+                    {% if contact.notes %}<br><small class="text-muted">{{ contact.notes }}</small>{% endif %}
+                </div>
+                {% else %}
+                <p class="text-muted">No contacts added yet.</p>
+                {% endfor %}
+
+                <hr>
+                <h6>Add New Contact</h6>
+                <form method="post" action="{{ url_for('add_contact', entity_id=entity.id) }}">
+                    <div class="mb-2">
+                        <input type="text" name="name" class="form-control form-control-sm" placeholder="Name *" required>
+                    </div>
+                    <div class="mb-2">
+                        <input type="text" name="title" class="form-control form-control-sm" placeholder="Title (e.g., Superintendent)">
+                    </div>
+                    <div class="mb-2">
+                        <select name="role" class="form-select form-select-sm">
+                            <option value="">Select Role</option>
+                            <option value="decision_maker">Decision Maker</option>
+                            <option value="influencer">Influencer</option>
+                            <option value="procurement">Procurement Staff</option>
+                            <option value="finance">Finance/Budget</option>
+                            <option value="involved_party">Involved Party</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <input type="email" name="email" class="form-control form-control-sm" placeholder="Email">
+                    </div>
+                    <div class="mb-2">
+                        <input type="tel" name="phone" class="form-control form-control-sm" placeholder="Phone">
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-primary w-100">
+                        <i class="bi bi-plus"></i> Add Contact
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Opportunities -->
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-fire"></i> Opportunities ({{ opportunities|length }})</h5>
+            </div>
+            <div class="card-body p-0">
+                {% if opportunities %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Heat</th>
+                                <th>Title</th>
+                                <th>Type</th>
+                                <th>Status</th>
+                                <th>Detected</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for opp in opportunities %}
+                            <tr>
+                                <td>
+                                    <span class="badge rounded-pill bg-{{ 'danger' if opp.heat_score >= 70 else 'warning text-dark' if opp.heat_score >= 40 else 'secondary' }}">
+                                        {{ opp.heat_score }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <a href="{{ url_for('opportunity_detail', opportunity_id=opp.id) }}">
+                                        {{ opp.title[:50] }}{% if opp.title|length > 50 %}...{% endif %}
+                                    </a>
+                                </td>
+                                <td>
+                                    <span class="badge bg-{{ 'danger' if opp.issue_type == 'legal' else 'warning text-dark' if opp.issue_type == 'procurement' else 'info' }}">
+                                        {{ opp.issue_type|title if opp.issue_type else 'Unknown' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-{{ 'primary' if opp.status == 'new' else 'info' if opp.status == 'researching' else 'warning text-dark' if opp.status == 'contacted' else 'success' }}">
+                                        {{ opp.status|replace('_', ' ')|title }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <small>{{ opp.first_detected[:10] if opp.first_detected else 'Unknown' }}</small>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-5">
+                    <i class="bi bi-inbox fs-1 text-muted d-block mb-3"></i>
+                    <p class="text-muted">No opportunities linked to this entity yet.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

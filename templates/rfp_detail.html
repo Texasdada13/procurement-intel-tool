@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+
+{% block title %}{{ rfp.title[:50] }} - RFP Detail{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('rfps_list') }}">RFPs</a></li>
+                <li class="breadcrumb-item active">{{ rfp.title[:30] }}...</li>
+            </ol>
+        </nav>
+        <h1>{{ rfp.title }}</h1>
+        {% if rfp.is_relevant %}
+        <span class="badge bg-success fs-6"><i class="bi bi-star-fill"></i> Relevant to Your Services</span>
+        {% endif %}
+    </div>
+    <div class="col-md-4 text-end">
+        {% if rfp.source_url %}
+        <a href="{{ rfp.source_url }}" target="_blank" class="btn btn-primary">
+            <i class="bi bi-box-arrow-up-right"></i> View Original
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row">
+    <!-- Main Content -->
+    <div class="col-md-8">
+        <!-- RFP Details Card -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> RFP Details</h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <strong>Solicitation #:</strong><br>
+                        {{ rfp.solicitation_number or 'Not specified' }}
+                    </div>
+                    <div class="col-md-4">
+                        <strong>Type:</strong><br>
+                        <span class="badge bg-secondary">{{ rfp.rfp_type or 'RFP' }}</span>
+                    </div>
+                    <div class="col-md-4">
+                        <strong>Category:</strong><br>
+                        {% if rfp.category %}
+                        <span class="badge bg-{{ 'primary' if rfp.category == 'it_consulting' else 'success' if rfp.category == 'software' else 'info' if rfp.category == 'study' else 'secondary' }}">
+                            {{ rfp.category|replace('_', ' ')|title }}
+                        </span>
+                        {% else %}
+                        <span class="text-muted">Not categorized</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <strong>Posted Date:</strong><br>
+                        {{ rfp.posted_date[:10] if rfp.posted_date else 'Unknown' }}
+                    </div>
+                    <div class="col-md-4">
+                        <strong>Due Date:</strong><br>
+                        {% if rfp.due_date %}
+                        <span class="text-{{ 'danger fw-bold' if rfp.status == 'open' else '' }}">
+                            {{ rfp.due_date[:10] }}
+                        </span>
+                        {% else %}
+                        <span class="text-muted">TBD</span>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-4">
+                        <strong>Status:</strong><br>
+                        <span class="badge bg-{{ 'success' if rfp.status == 'open' else 'secondary' if rfp.status == 'closed' else 'info' }}">
+                            {{ rfp.status|title }}
+                        </span>
+                    </div>
+                </div>
+
+                {% if rfp.estimated_value %}
+                <div class="row mb-3">
+                    <div class="col-md-12">
+                        <strong>Estimated Value:</strong><br>
+                        ${{ "{:,.0f}".format(rfp.estimated_value) }}
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if rfp.description %}
+                <hr>
+                <h6>Description</h6>
+                <p class="mb-0">{{ rfp.description }}</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Contact Information -->
+        {% if rfp.contact_name or rfp.contact_email or rfp.contact_phone %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-person"></i> Contact Information</h5>
+            </div>
+            <div class="card-body">
+                {% if rfp.contact_name %}
+                <p><strong>Name:</strong> {{ rfp.contact_name }}</p>
+                {% endif %}
+                {% if rfp.contact_email %}
+                <p><strong>Email:</strong> <a href="mailto:{{ rfp.contact_email }}">{{ rfp.contact_email }}</a></p>
+                {% endif %}
+                {% if rfp.contact_phone %}
+                <p class="mb-0"><strong>Phone:</strong> {{ rfp.contact_phone }}</p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Relevance Analysis -->
+        {% if rfp.is_relevant %}
+        <div class="card mb-4 border-success">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-bullseye"></i> Relevance Analysis</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h4 class="text-success">{{ "%.1f"|format(rfp.relevance_score) }}</h4>
+                        <p class="text-muted mb-0">Relevance Score</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p>This RFP matches your target keywords for IT consulting and professional services opportunities.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Notes -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-sticky"></i> Notes</h5>
+            </div>
+            <div class="card-body">
+                {% if rfp.notes %}
+                <pre class="mb-3" style="white-space: pre-wrap;">{{ rfp.notes }}</pre>
+                {% else %}
+                <p class="text-muted mb-3">No notes yet.</p>
+                {% endif %}
+
+                <form method="post" action="{{ url_for('update_rfp_route', rfp_id=rfp.id) }}">
+                    <div class="mb-3">
+                        <textarea name="notes" class="form-control" rows="3" placeholder="Add notes about this RFP...">{{ rfp.notes or '' }}</textarea>
+                    </div>
+                    <button type="submit" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-save"></i> Save Notes
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="col-md-4">
+        <!-- Quick Actions -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-lightning"></i> Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{{ url_for('update_rfp_route', rfp_id=rfp.id) }}" class="mb-3">
+                    <label class="form-label">Update Status</label>
+                    <select name="status" class="form-select mb-2">
+                        <option value="open" {{ 'selected' if rfp.status == 'open' }}>Open</option>
+                        <option value="reviewing" {{ 'selected' if rfp.status == 'reviewing' }}>Reviewing</option>
+                        <option value="preparing_response" {{ 'selected' if rfp.status == 'preparing_response' }}>Preparing Response</option>
+                        <option value="submitted" {{ 'selected' if rfp.status == 'submitted' }}>Submitted</option>
+                        <option value="closed" {{ 'selected' if rfp.status == 'closed' }}>Closed</option>
+                        <option value="awarded" {{ 'selected' if rfp.status == 'awarded' }}>Awarded</option>
+                        <option value="not_pursuing" {{ 'selected' if rfp.status == 'not_pursuing' }}>Not Pursuing</option>
+                    </select>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-check-circle"></i> Update Status
+                    </button>
+                </form>
+
+                {% if rfp.source_url %}
+                <a href="{{ rfp.source_url }}" target="_blank" class="btn btn-outline-secondary w-100 mb-2">
+                    <i class="bi bi-box-arrow-up-right"></i> View Original Posting
+                </a>
+                {% endif %}
+
+                {% if rfp.attachments_url %}
+                <a href="{{ rfp.attachments_url }}" target="_blank" class="btn btn-outline-secondary w-100">
+                    <i class="bi bi-paperclip"></i> View Attachments
+                </a>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Agency Info -->
+        {% if entity %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-building"></i> Issuing Agency</h5>
+            </div>
+            <div class="card-body">
+                <h6><a href="{{ url_for('entity_detail', entity_id=entity.id) }}">{{ entity.name }}</a></h6>
+                <p class="mb-1"><small class="text-muted">{{ entity.entity_type|title }}</small></p>
+                {% if entity.county %}
+                <p class="mb-1"><small>{{ entity.county }}, {{ entity.state }}</small></p>
+                {% endif %}
+                {% if entity.population %}
+                <p class="mb-1"><small>Population: {{ "{:,}".format(entity.population) }}</small></p>
+                {% endif %}
+                {% if entity.website %}
+                <a href="{{ entity.website }}" target="_blank" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-globe"></i> Agency Website
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Source Info -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> Source Info</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Portal:</strong> {{ rfp.source_portal or 'Manual Entry' }}</p>
+                <p><strong>Added:</strong> {{ rfp.created_at[:10] if rfp.created_at else 'Unknown' }}</p>
+                <p class="mb-0"><strong>Last Updated:</strong> {{ rfp.updated_at[:10] if rfp.updated_at else 'Unknown' }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

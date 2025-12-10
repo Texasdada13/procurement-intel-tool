@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block title %}Discover - Procurement Intel{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1><i class="bi bi-binoculars"></i> Discovery Center</h1>
+        <p class="text-muted">Find new procurement opportunities from news sources and public records</p>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Manual Article Add -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-link-45deg"></i> Add Article Manually</h5>
+            </div>
+            <div class="card-body">
+                <p>Found an article about a procurement scandal? Add it here for analysis.</p>
+                <form method="post" action="{{ url_for('add_article') }}">
+                    <div class="mb-3">
+                        <label class="form-label">Article URL</label>
+                        <input type="url" name="url" class="form-control" placeholder="https://..." required>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-plus-circle"></i> Analyze Article
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Automated Discovery -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-robot"></i> Automated Discovery</h5>
+            </div>
+            <div class="card-body">
+                <p>Run automated search across news sources for procurement-related scandals.</p>
+                <form method="post" action="{{ url_for('run_discovery') }}">
+                    <div class="mb-3">
+                        <label class="form-label">Custom Search Queries (optional)</label>
+                        <textarea name="queries" class="form-control" rows="4" placeholder="One query per line...&#10;Florida county bid rigging&#10;school board procurement scandal"></textarea>
+                        <small class="text-muted">Leave blank to use default queries</small>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="comprehensive" name="comprehensive">
+                        <label class="form-check-label" for="comprehensive">
+                            <strong>Comprehensive Florida-Wide Search</strong>
+                            <br><small class="text-muted">Searches 40+ queries across all 67 Florida counties, major cities, and school districts. Takes longer but finds more opportunities.</small>
+                        </label>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-success">
+                            <i class="bi bi-search"></i> Run Discovery
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Florida Coverage Map -->
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0"><i class="bi bi-map"></i> Florida Coverage</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <h6>South Florida</h6>
+                <ul class="list-unstyled small">
+                    <li>Miami-Dade County</li>
+                    <li>Broward County</li>
+                    <li>Palm Beach County</li>
+                    <li>Monroe County</li>
+                </ul>
+            </div>
+            <div class="col-md-3">
+                <h6>Central Florida</h6>
+                <ul class="list-unstyled small">
+                    <li>Orange County</li>
+                    <li>Seminole County</li>
+                    <li>Osceola County</li>
+                    <li>Lake County</li>
+                    <li>Volusia County</li>
+                </ul>
+            </div>
+            <div class="col-md-3">
+                <h6>Tampa Bay</h6>
+                <ul class="list-unstyled small">
+                    <li>Hillsborough County</li>
+                    <li>Pinellas County</li>
+                    <li>Pasco County</li>
+                    <li>Manatee County</li>
+                    <li>Sarasota County</li>
+                </ul>
+            </div>
+            <div class="col-md-3">
+                <h6>North Florida</h6>
+                <ul class="list-unstyled small">
+                    <li>Duval County</li>
+                    <li>Leon County</li>
+                    <li>Alachua County</li>
+                    <li>Marion County</li>
+                    <li>Escambia County</li>
+                </ul>
+            </div>
+        </div>
+        <div class="alert alert-info mt-3 mb-0">
+            <i class="bi bi-info-circle"></i> <strong>All 67 Florida counties</strong> are tracked, along with 55+ major cities, 67 school boards, and special districts like water management, transit authorities, and utilities.
+        </div>
+    </div>
+</div>
+
+<!-- Default Search Queries -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-list-check"></i> Default Search Queries</h5>
+    </div>
+    <div class="card-body">
+        <p class="text-muted">When running automated discovery with no custom queries, these searches are performed:</p>
+        <div class="row">
+            <div class="col-md-6">
+                <ul class="list-unstyled">
+                    <li><i class="bi bi-search text-primary"></i> Florida county procurement violation</li>
+                    <li><i class="bi bi-search text-primary"></i> Florida school board bid rigging</li>
+                    <li><i class="bi bi-search text-primary"></i> Florida county audit findings</li>
+                    <li><i class="bi bi-search text-primary"></i> Florida city contract scandal</li>
+                </ul>
+            </div>
+            <div class="col-md-6">
+                <ul class="list-unstyled">
+                    <li><i class="bi bi-search text-primary"></i> Florida government corruption investigation</li>
+                    <li><i class="bi bi-search text-primary"></i> Florida inspector general report procurement</li>
+                    <li><i class="bi bi-search text-primary"></i> Florida county budget mismanagement</li>
+                    <li><i class="bi bi-search text-primary"></i> Florida school district construction bid</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Tracked Keywords -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-tags"></i> Tracked Keywords ({{ keywords|length }})</h5>
+            </div>
+            <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                <div class="row">
+                    {% for kw in keywords %}
+                    <div class="col-6 mb-2">
+                        <span class="badge bg-{{ 'danger' if kw.category == 'legal' else 'warning text-dark' if kw.category == 'procurement' else 'info' if kw.category == 'ethics' else 'primary' if kw.category == 'audit' else 'secondary' }}">
+                            {{ kw.keyword }}
+                        </span>
+                        <small class="text-muted">({{ kw.weight }}x)</small>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- News Sources -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-newspaper"></i> News Sources ({{ sources|length }})</h5>
+            </div>
+            <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                {% for source in sources %}
+                <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                    <div>
+                        <strong>{{ source.name }}</strong><br>
+                        <small class="text-muted">{{ source.source_type|title }} {% if source.state %}| {{ source.state }}{% endif %}</small>
+                    </div>
+                    <div>
+                        {% if source.is_active %}
+                        <span class="badge bg-success">Active</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Inactive</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tips -->
+<div class="card bg-light">
+    <div class="card-body">
+        <h5><i class="bi bi-lightbulb"></i> Discovery Tips</h5>
+        <ul class="mb-0">
+            <li>For best results, search for specific incidents you've heard about</li>
+            <li>Local news sources often have more detailed coverage than national outlets</li>
+            <li>Look for articles mentioning "inspector general," "audit," or "investigation"</li>
+            <li>School board and county commission meetings often reveal procurement issues</li>
+            <li>Grand jury reports are gold mines for identifying systemic problems</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

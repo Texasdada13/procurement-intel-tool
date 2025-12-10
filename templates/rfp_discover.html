@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}Discover RFPs - Procurement Intel{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8">
+        <h1><i class="bi bi-search"></i> Discover RFPs</h1>
+        <p class="text-muted">Find IT consulting and professional services RFPs from Florida government agencies</p>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Discovery Controls -->
+    <div class="col-md-8">
+        <!-- Auto Discovery -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-robot"></i> Automated Discovery</h5>
+            </div>
+            <div class="card-body">
+                <p>Scan Florida procurement portals for IT/consulting RFPs:</p>
+                <ul class="text-muted">
+                    <li>VendorLink (Florida State)</li>
+                    <li>DemandStar (Multiple Counties)</li>
+                    <li>Bonfire (Orange, Hillsborough, Palm Beach, Broward)</li>
+                    <li>County procurement sites (Marion, Alachua, Leon, Volusia, and more)</li>
+                </ul>
+                <form method="post" action="{{ url_for('run_rfp_discovery') }}">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="bi bi-play-circle"></i> Run Discovery
+                    </button>
+                </form>
+                <small class="text-muted d-block mt-2">
+                    Note: This may take several minutes to scan all portals.
+                </small>
+            </div>
+        </div>
+
+        <!-- Manual Add -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-plus-circle"></i> Add RFP Manually</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{{ url_for('add_rfp_route') }}">
+                    <div class="mb-3">
+                        <label class="form-label">RFP URL (optional)</label>
+                        <input type="url" name="url" class="form-control" placeholder="https://procurement-portal.gov/rfp/12345">
+                        <small class="text-muted">If provided, we'll extract details from the page</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Title</label>
+                        <input type="text" name="title" class="form-control" placeholder="IT Infrastructure Assessment">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Agency</label>
+                                <input type="text" name="agency" class="form-control" placeholder="Marion County">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Due Date</label>
+                                <input type="date" name="due_date" class="form-control">
+                            </div>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-outline-primary">
+                        <i class="bi bi-plus"></i> Add RFP
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar Stats -->
+    <div class="col-md-4">
+        <!-- Current Stats -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-bar-chart"></i> Current Stats</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <tr>
+                        <td>Total RFPs</td>
+                        <td class="text-end"><strong>{{ stats.total_rfps }}</strong></td>
+                    </tr>
+                    <tr>
+                        <td>Open RFPs</td>
+                        <td class="text-end"><strong>{{ stats.open_rfps }}</strong></td>
+                    </tr>
+                    <tr>
+                        <td>Relevant (IT/Consulting)</td>
+                        <td class="text-end"><strong class="text-success">{{ stats.relevant_rfps }}</strong></td>
+                    </tr>
+                    <tr>
+                        <td>Closing Soon (7 days)</td>
+                        <td class="text-end"><strong class="text-warning">{{ stats.closing_soon }}</strong></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- Keywords -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-tags"></i> Target Keywords</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small">RFPs are scored against these keywords:</p>
+                <div class="d-flex flex-wrap gap-1">
+                    {% for kw in keywords[:20] %}
+                    <span class="badge bg-{{ 'primary' if kw.category == 'it_consulting' else 'success' if kw.category == 'software' else 'info' if kw.category == 'study' else 'warning text-dark' if kw.category == 'professional_services' else 'secondary' }}">
+                        {{ kw.keyword }}
+                    </span>
+                    {% endfor %}
+                    {% if keywords|length > 20 %}
+                    <span class="badge bg-light text-dark">+{{ keywords|length - 20 }} more</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Portals by Category -->
+        {% if stats.by_portal %}
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-globe"></i> RFPs by Portal</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    {% for portal, count in stats.by_portal.items() %}
+                    <tr>
+                        <td>{{ portal }}</td>
+                        <td class="text-end"><strong>{{ count }}</strong></td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Recent Resources -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-link-45deg"></i> Florida Procurement Portals</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4">
+                <h6>State Portal</h6>
+                <ul class="list-unstyled">
+                    <li><a href="https://vendor.myflorida.com" target="_blank">VendorLink (MyFlorida)</a></li>
+                </ul>
+            </div>
+            <div class="col-md-4">
+                <h6>E-Procurement Platforms</h6>
+                <ul class="list-unstyled">
+                    <li><a href="https://www.demandstar.com" target="_blank">DemandStar</a></li>
+                    <li><a href="https://bonfirehub.com" target="_blank">Bonfire</a></li>
+                    <li><a href="https://www.publicpurchase.com" target="_blank">Public Purchase</a></li>
+                </ul>
+            </div>
+            <div class="col-md-4">
+                <h6>Major County Portals</h6>
+                <ul class="list-unstyled">
+                    <li><a href="https://www.miamidade.gov/global/business/bids.page" target="_blank">Miami-Dade County</a></li>
+                    <li><a href="https://www.broward.org/Purchasing/Pages/CurrentSolicitations.aspx" target="_blank">Broward County</a></li>
+                    <li><a href="https://www.ocfl.net/BidsSolicitations.aspx" target="_blank">Orange County</a></li>
+                    <li><a href="https://www.hillsboroughcounty.org/en/residents/property-owners-and-renters/purchasing-and-bids" target="_blank">Hillsborough County</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
