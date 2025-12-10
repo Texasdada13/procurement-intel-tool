@@ -1,0 +1,48 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Start Flask Server",
+            "type": "shell",
+            "command": "python",
+            "args": ["web/app.py"],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "isBackground": true,
+            "problemMatcher": {
+                "pattern": {
+                    "regexp": "^$"
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": ".*Running on.*",
+                    "endsPattern": ".*Running on.*"
+                }
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "runOptions": {
+                "runOn": "folderOpen"
+            }
+        },
+        {
+            "label": "Open Browser",
+            "type": "shell",
+            "command": "timeout /t 3 && start http://127.0.0.1:5003",
+            "windows": {
+                "command": "cmd",
+                "args": ["/c", "timeout /t 3 && start http://127.0.0.1:5003"]
+            },
+            "dependsOn": "Start Flask Server",
+            "presentation": {
+                "reveal": "never"
+            },
+            "runOptions": {
+                "runOn": "folderOpen"
+            }
+        }
+    ]
+}
