@@ -216,6 +216,79 @@ def init_database():
         )
     ''')
 
+    # Bid responses tracking
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS bid_responses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            rfp_id INTEGER NOT NULL,
+            status TEXT DEFAULT 'considering',  -- considering, preparing, submitted, won, lost, no_bid
+            decision_date TIMESTAMP,  -- when we decided to bid/no-bid
+            submission_date TIMESTAMP,  -- when we submitted
+            result_date TIMESTAMP,  -- when we found out result
+            proposal_value REAL,  -- our bid amount
+            winning_value REAL,  -- winning bid amount (if we lost)
+            winner_name TEXT,  -- who won (if not us)
+            notes TEXT,
+            lessons_learned TEXT,
+            proposal_file_path TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (rfp_id) REFERENCES rfps(id)
+        )
+    ''')
+
+    # Competitors tracking
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS competitors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            website TEXT,
+            specialties TEXT,  -- comma-separated: IT, consulting, software, etc.
+            notes TEXT,
+            wins_count INTEGER DEFAULT 0,
+            losses_count INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Competitor wins (track which RFPs competitors won)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS competitor_wins (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            competitor_id INTEGER NOT NULL,
+            rfp_id INTEGER,
+            bid_id INTEGER,
+            rfp_title TEXT,
+            entity_name TEXT,
+            contract_title TEXT,
+            contract_value REAL,
+            winning_value REAL,
+            our_value REAL,
+            win_date TIMESTAMP,
+            award_date TIMESTAMP,
+            source_url TEXT,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (competitor_id) REFERENCES competitors(id),
+            FOREIGN KEY (rfp_id) REFERENCES rfps(id),
+            FOREIGN KEY (bid_id) REFERENCES bid_responses(id)
+        )
+    ''')
+
+    # Response templates
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS response_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            category TEXT,  -- cover_letter, executive_summary, qualifications, pricing, etc.
+            content TEXT NOT NULL,
+            tags TEXT,  -- comma-separated tags for searching
+            use_count INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
     conn.commit()
     conn.close()
     logger.info(f"Database initialized at {DB_PATH}")
@@ -1028,6 +1101,397 @@ def get_rfp_stats() -> Dict:
 
     conn.close()
     return stats
+
+
+# ============== Bid Response Operations ==============
+
+def create_bid_response(rfp_id: int, status: str = 'considering', **kwargs) -> int:
+    """Create a bid response record for an RFP."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        INSERT INTO bid_responses (rfp_id, status, decision_date, submission_date,
+            result_date, proposal_value, winning_value, winner_name, notes,
+            lessons_learned, proposal_file_path)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (rfp_id, status, kwargs.get('decision_date'), kwargs.get('submission_date'),
+          kwargs.get('result_date'), kwargs.get('proposal_value'), kwargs.get('winning_value'),
+          kwargs.get('winner_name'), kwargs.get('notes'), kwargs.get('lessons_learned'),
+          kwargs.get('proposal_file_path')))
+
+    conn.commit()
+    bid_id = cursor.lastrowid
+    conn.close()
+    return bid_id
+
+
+def get_bid_response(bid_id: int) -> Optional[Dict]:
+    """Get a bid response by ID."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT br.*, r.title as rfp_title, r.solicitation_number, r.due_date,
+               e.name as entity_name
+        FROM bid_responses br
+        JOIN rfps r ON br.rfp_id = r.id
+        LEFT JOIN entities e ON r.entity_id = e.id
+        WHERE br.id = ?
+    ''', (bid_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_bid_response_for_rfp(rfp_id: int) -> Optional[Dict]:
+    """Get the bid response for an RFP (if exists)."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM bid_responses WHERE rfp_id = ?', (rfp_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_bid_response(bid_id: int, **kwargs) -> bool:
+    """Update a bid response."""
+    if not kwargs:
+        return False
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    updates = []
+    values = []
+    for key, value in kwargs.items():
+        if key in ['status', 'decision_date', 'submission_date', 'result_date',
+                   'proposal_value', 'winning_value', 'winner_name', 'notes',
+                   'lessons_learned', 'proposal_file_path']:
+            updates.append(f"{key} = ?")
+            values.append(value)
+
+    if not updates:
+        conn.close()
+        return False
+
+    updates.append("updated_at = CURRENT_TIMESTAMP")
+    values.append(bid_id)
+
+    cursor.execute(f'''
+        UPDATE bid_responses SET {', '.join(updates)} WHERE id = ?
+    ''', values)
+
+    conn.commit()
+    conn.close()
+    return True
+
+
+def get_all_bid_responses(status: str = None) -> List[Dict]:
+    """Get all bid responses with optional status filter."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    query = '''
+        SELECT br.*, r.title as rfp_title, r.solicitation_number, r.due_date,
+               r.rfp_type, r.category, e.name as entity_name
+        FROM bid_responses br
+        JOIN rfps r ON br.rfp_id = r.id
+        LEFT JOIN entities e ON r.entity_id = e.id
+    '''
+    params = []
+
+    if status:
+        query += ' WHERE br.status = ?'
+        params.append(status)
+
+    query += ' ORDER BY br.updated_at DESC'
+
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_bid_stats() -> Dict:
+    """Get statistics about bid responses."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    stats = {}
+
+    # Count by status
+    cursor.execute('''
+        SELECT status, COUNT(*) as count FROM bid_responses
+        GROUP BY status
+    ''')
+    stats['by_status'] = {row['status']: row['count'] for row in cursor.fetchall()}
+
+    # Win rate
+    cursor.execute('SELECT COUNT(*) as count FROM bid_responses WHERE status = "won"')
+    wins = cursor.fetchone()['count']
+
+    cursor.execute('SELECT COUNT(*) as count FROM bid_responses WHERE status IN ("won", "lost")')
+    total_decided = cursor.fetchone()['count']
+
+    stats['win_rate'] = (wins / total_decided * 100) if total_decided > 0 else 0
+    stats['total_wins'] = wins
+    stats['total_losses'] = total_decided - wins
+
+    # Total value won
+    cursor.execute('SELECT SUM(proposal_value) as total FROM bid_responses WHERE status = "won"')
+    row = cursor.fetchone()
+    stats['total_value_won'] = row['total'] or 0
+
+    conn.close()
+    return stats
+
+
+# ============== Bid Response Operations (extended) ==============
+
+def delete_bid_response(bid_id: int) -> bool:
+    """Delete a bid response."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM bid_responses WHERE id = ?', (bid_id,))
+    conn.commit()
+    success = cursor.rowcount > 0
+    conn.close()
+    return success
+
+
+# ============== Competitor Operations ==============
+
+def create_competitor(name: str, **kwargs) -> int:
+    """Create a competitor record."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # First check if competitor table has the new columns
+    try:
+        cursor.execute('''
+            INSERT INTO competitors (name, website, specialties, notes)
+            VALUES (?, ?, ?, ?)
+        ''', (name, kwargs.get('website'), kwargs.get('specialties') or kwargs.get('strengths'),
+              kwargs.get('notes')))
+        conn.commit()
+        competitor_id = cursor.lastrowid
+    except sqlite3.IntegrityError:
+        cursor.execute('SELECT id FROM competitors WHERE name = ?', (name,))
+        row = cursor.fetchone()
+        competitor_id = row['id'] if row else None
+
+    conn.close()
+    return competitor_id
+
+
+def update_competitor(competitor_id: int, **kwargs) -> bool:
+    """Update a competitor."""
+    if not kwargs:
+        return False
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    updates = []
+    values = []
+    for key, value in kwargs.items():
+        if key in ['name', 'website', 'specialties', 'notes', 'contact_name',
+                   'contact_email', 'strengths', 'weaknesses']:
+            updates.append(f"{key} = ?")
+            values.append(value)
+
+    if not updates:
+        conn.close()
+        return False
+
+    values.append(competitor_id)
+
+    cursor.execute(f'''
+        UPDATE competitors SET {', '.join(updates)} WHERE id = ?
+    ''', values)
+
+    conn.commit()
+    conn.close()
+    return True
+
+
+def delete_competitor(competitor_id: int) -> bool:
+    """Delete a competitor and their wins."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM competitor_wins WHERE competitor_id = ?', (competitor_id,))
+    cursor.execute('DELETE FROM competitors WHERE id = ?', (competitor_id,))
+    conn.commit()
+    success = cursor.rowcount > 0
+    conn.close()
+    return success
+
+
+def get_competitor(competitor_id: int) -> Optional[Dict]:
+    """Get competitor by ID."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM competitors WHERE id = ?', (competitor_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_all_competitors() -> List[Dict]:
+    """Get all competitors with win stats."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT c.*,
+               COUNT(cw.id) as win_count,
+               SUM(cw.contract_value) as total_value_won
+        FROM competitors c
+        LEFT JOIN competitor_wins cw ON c.id = cw.competitor_id
+        GROUP BY c.id
+        ORDER BY win_count DESC
+    ''')
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def add_competitor_win(competitor_id: int, **kwargs) -> int:
+    """Record a competitor win."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        INSERT INTO competitor_wins (competitor_id, rfp_id, bid_id, rfp_title,
+            entity_name, contract_title, contract_value, winning_value, our_value,
+            win_date, award_date, source_url, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (competitor_id, kwargs.get('rfp_id'), kwargs.get('bid_id'),
+          kwargs.get('rfp_title'), kwargs.get('entity_name'),
+          kwargs.get('contract_title'), kwargs.get('contract_value'),
+          kwargs.get('winning_value'), kwargs.get('our_value'),
+          kwargs.get('win_date') or datetime.now().strftime('%Y-%m-%d'),
+          kwargs.get('award_date'),
+          kwargs.get('source_url'), kwargs.get('notes')))
+
+    # Update competitor wins count
+    cursor.execute('UPDATE competitors SET wins_count = wins_count + 1 WHERE id = ?',
+                   (competitor_id,))
+
+    conn.commit()
+    win_id = cursor.lastrowid
+    conn.close()
+    return win_id
+
+
+def get_competitor_wins(competitor_id: int) -> List[Dict]:
+    """Get all wins for a competitor."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT cw.*, COALESCE(cw.rfp_title, r.title) as rfp_title
+        FROM competitor_wins cw
+        LEFT JOIN rfps r ON cw.rfp_id = r.id
+        WHERE cw.competitor_id = ?
+        ORDER BY COALESCE(cw.win_date, cw.award_date, cw.created_at) DESC
+    ''', (competitor_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+# ============== Response Template Operations ==============
+
+def create_template(name: str, content: str, **kwargs) -> int:
+    """Create a response template."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        INSERT INTO response_templates (name, category, content, tags)
+        VALUES (?, ?, ?, ?)
+    ''', (name, kwargs.get('category'), content, kwargs.get('tags')))
+
+    conn.commit()
+    template_id = cursor.lastrowid
+    conn.close()
+    return template_id
+
+
+def get_template(template_id: int) -> Optional[Dict]:
+    """Get template by ID."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM response_templates WHERE id = ?', (template_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_all_templates(category: str = None) -> List[Dict]:
+    """Get all templates with optional category filter."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    if category:
+        cursor.execute('SELECT * FROM response_templates WHERE category = ? ORDER BY use_count DESC', (category,))
+    else:
+        cursor.execute('SELECT * FROM response_templates ORDER BY category, use_count DESC')
+
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def update_template(template_id: int, **kwargs) -> bool:
+    """Update a template."""
+    if not kwargs:
+        return False
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    updates = []
+    values = []
+    for key, value in kwargs.items():
+        if key in ['name', 'category', 'content', 'tags']:
+            updates.append(f"{key} = ?")
+            values.append(value)
+
+    if not updates:
+        conn.close()
+        return False
+
+    updates.append("updated_at = CURRENT_TIMESTAMP")
+    values.append(template_id)
+
+    cursor.execute(f'''
+        UPDATE response_templates SET {', '.join(updates)} WHERE id = ?
+    ''', values)
+
+    conn.commit()
+    conn.close()
+    return True
+
+
+def increment_template_use(template_id: int):
+    """Increment template use count."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('UPDATE response_templates SET use_count = use_count + 1 WHERE id = ?',
+                   (template_id,))
+    conn.commit()
+    conn.close()
+
+
+def delete_template(template_id: int) -> bool:
+    """Delete a template."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM response_templates WHERE id = ?', (template_id,))
+    conn.commit()
+    success = cursor.rowcount > 0
+    conn.close()
+    return success
 
 
 if __name__ == '__main__':

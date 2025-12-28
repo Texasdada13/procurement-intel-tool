@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+
+{% block title %}Bid: {{ bid.rfp_title[:50] }} - Procurement Intel{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('bids_list') }}">Bids</a></li>
+                <li class="breadcrumb-item active">{{ bid.solicitation_number or 'Bid Details' }}</li>
+            </ol>
+        </nav>
+        <h1>
+            {% if bid.status == 'won' %}
+            <i class="bi bi-trophy-fill text-success"></i>
+            {% elif bid.status == 'lost' %}
+            <i class="bi bi-x-circle-fill text-danger"></i>
+            {% elif bid.status == 'submitted' %}
+            <i class="bi bi-send-check-fill text-info"></i>
+            {% else %}
+            <i class="bi bi-clipboard-check"></i>
+            {% endif %}
+            {{ bid.rfp_title }}
+        </h1>
+        <p class="text-muted">
+            {{ bid.entity_name or 'Unknown Agency' }}
+            {% if bid.solicitation_number %}
+            | {{ bid.solicitation_number }}
+            {% endif %}
+        </p>
+    </div>
+    <div class="col-md-4 text-end">
+        {% if bid.rfp_id %}
+        <a href="{{ url_for('rfp_detail', rfp_id=bid.rfp_id) }}" class="btn btn-outline-primary">
+            <i class="bi bi-file-earmark-text"></i> View Original RFP
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row">
+    <!-- Main Content -->
+    <div class="col-md-8">
+        <!-- Status Update Form -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-pencil-square"></i> Update Bid Status</h5>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('bid_update', bid_id=bid.id) }}" method="post">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Status</label>
+                            <select name="status" class="form-select" id="statusSelect">
+                                <option value="considering" {{ 'selected' if bid.status == 'considering' }}>Considering</option>
+                                <option value="preparing" {{ 'selected' if bid.status == 'preparing' }}>Preparing Proposal</option>
+                                <option value="submitted" {{ 'selected' if bid.status == 'submitted' }}>Submitted</option>
+                                <option value="won" {{ 'selected' if bid.status == 'won' }}>Won</option>
+                                <option value="lost" {{ 'selected' if bid.status == 'lost' }}>Lost</option>
+                                <option value="no_bid" {{ 'selected' if bid.status == 'no_bid' }}>No Bid</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Our Proposal Value</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" name="proposal_value" class="form-control"
+                                       value="{{ bid.proposal_value or '' }}" step="0.01" placeholder="0.00">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Decision Date</label>
+                            <input type="date" name="decision_date" class="form-control"
+                                   value="{{ bid.decision_date[:10] if bid.decision_date else '' }}">
+                            <small class="text-muted">When we decided to bid or not</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Submission Date</label>
+                            <input type="date" name="submission_date" class="form-control"
+                                   value="{{ bid.submission_date[:10] if bid.submission_date else '' }}">
+                            <small class="text-muted">When we submitted the proposal</small>
+                        </div>
+                    </div>
+
+                    <!-- Result fields (shown for won/lost) -->
+                    <div id="resultFields" class="mb-3" style="display: {{ 'block' if bid.status in ['won', 'lost'] else 'none' }};">
+                        <hr>
+                        <h6 class="text-muted mb-3">Result Details</h6>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <label class="form-label">Result Date</label>
+                                <input type="date" name="result_date" class="form-control"
+                                       value="{{ bid.result_date[:10] if bid.result_date else '' }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Winner Name</label>
+                                <input type="text" name="winner_name" class="form-control"
+                                       value="{{ bid.winner_name or '' }}" placeholder="If we lost, who won?">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Winning Value</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" name="winning_value" class="form-control"
+                                           value="{{ bid.winning_value or '' }}" step="0.01" placeholder="0.00">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Notes</label>
+                        <textarea name="notes" class="form-control" rows="3"
+                                  placeholder="Strategy, key points, etc.">{{ bid.notes or '' }}</textarea>
+                    </div>
+
+                    <div class="mb-3" id="lessonsField" style="display: {{ 'block' if bid.status in ['won', 'lost'] else 'none' }};">
+                        <label class="form-label">Lessons Learned</label>
+                        <textarea name="lessons_learned" class="form-control" rows="3"
+                                  placeholder="What worked? What could be improved?">{{ bid.lessons_learned or '' }}</textarea>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> Save Changes
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Timeline -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-clock-history"></i> Timeline</h5>
+            </div>
+            <div class="card-body">
+                <div class="timeline">
+                    {% if bid.created_at %}
+                    <div class="timeline-item">
+                        <div class="timeline-marker bg-secondary"></div>
+                        <div class="timeline-content">
+                            <h6 class="mb-0">Bid Created</h6>
+                            <small class="text-muted">{{ bid.created_at[:16] }}</small>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if bid.decision_date %}
+                    <div class="timeline-item">
+                        <div class="timeline-marker bg-primary"></div>
+                        <div class="timeline-content">
+                            <h6 class="mb-0">Decision Made</h6>
+                            <small class="text-muted">{{ bid.decision_date[:10] }}</small>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if bid.submission_date %}
+                    <div class="timeline-item">
+                        <div class="timeline-marker bg-info"></div>
+                        <div class="timeline-content">
+                            <h6 class="mb-0">Proposal Submitted</h6>
+                            <small class="text-muted">{{ bid.submission_date[:10] }}</small>
+                            {% if bid.proposal_value %}
+                            <br><small class="text-muted">${{ "{:,.0f}".format(bid.proposal_value) }}</small>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if bid.due_date %}
+                    <div class="timeline-item">
+                        <div class="timeline-marker bg-warning"></div>
+                        <div class="timeline-content">
+                            <h6 class="mb-0">RFP Due Date</h6>
+                            <small class="text-muted">{{ bid.due_date[:10] }}</small>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if bid.result_date %}
+                    <div class="timeline-item">
+                        <div class="timeline-marker {{ 'bg-success' if bid.status == 'won' else 'bg-danger' }}"></div>
+                        <div class="timeline-content">
+                            <h6 class="mb-0">Result: {{ 'Won!' if bid.status == 'won' else 'Lost' }}</h6>
+                            <small class="text-muted">{{ bid.result_date[:10] }}</small>
+                            {% if bid.status == 'lost' and bid.winner_name %}
+                            <br><small class="text-muted">Won by: {{ bid.winner_name }}</small>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="col-md-4">
+        <!-- Status Card -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Current Status</h5>
+            </div>
+            <div class="card-body text-center">
+                {% if bid.status == 'considering' %}
+                <span class="badge bg-secondary fs-4 p-3">Considering</span>
+                {% elif bid.status == 'preparing' %}
+                <span class="badge bg-primary fs-4 p-3">Preparing</span>
+                {% elif bid.status == 'submitted' %}
+                <span class="badge bg-info fs-4 p-3">Submitted</span>
+                {% elif bid.status == 'won' %}
+                <span class="badge bg-success fs-4 p-3"><i class="bi bi-trophy-fill"></i> Won</span>
+                {% elif bid.status == 'lost' %}
+                <span class="badge bg-danger fs-4 p-3">Lost</span>
+                {% elif bid.status == 'no_bid' %}
+                <span class="badge bg-dark fs-4 p-3">No Bid</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Key Info -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Key Information</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <tr>
+                        <td><i class="bi bi-building"></i> Agency</td>
+                        <td>{{ bid.entity_name or 'Unknown' }}</td>
+                    </tr>
+                    <tr>
+                        <td><i class="bi bi-hash"></i> Solicitation</td>
+                        <td>{{ bid.solicitation_number or 'N/A' }}</td>
+                    </tr>
+                    <tr>
+                        <td><i class="bi bi-calendar"></i> Due Date</td>
+                        <td>{{ bid.due_date[:10] if bid.due_date else 'TBD' }}</td>
+                    </tr>
+                    <tr>
+                        <td><i class="bi bi-currency-dollar"></i> Our Value</td>
+                        <td>{{ "${:,.0f}".format(bid.proposal_value) if bid.proposal_value else '-' }}</td>
+                    </tr>
+                    {% if bid.status == 'lost' %}
+                    <tr>
+                        <td><i class="bi bi-trophy"></i> Winner</td>
+                        <td>{{ bid.winner_name or 'Unknown' }}</td>
+                    </tr>
+                    <tr>
+                        <td><i class="bi bi-cash"></i> Win Value</td>
+                        <td>{{ "${:,.0f}".format(bid.winning_value) if bid.winning_value else '-' }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    {% if bid.rfp_url %}
+                    <a href="{{ bid.rfp_url }}" target="_blank" class="btn btn-outline-primary">
+                        <i class="bi bi-box-arrow-up-right"></i> View on Portal
+                    </a>
+                    {% endif %}
+                    <a href="{{ url_for('bids_list') }}" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left"></i> Back to All Bids
+                    </a>
+                    <form action="{{ url_for('bid_delete', bid_id=bid.id) }}" method="post"
+                          onsubmit="return confirm('Are you sure you want to delete this bid record?');">
+                        <button type="submit" class="btn btn-outline-danger w-100">
+                            <i class="bi bi-trash"></i> Delete Bid
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.timeline {
+    position: relative;
+    padding-left: 30px;
+}
+.timeline-item {
+    position: relative;
+    padding-bottom: 20px;
+    border-left: 2px solid #dee2e6;
+    padding-left: 20px;
+    margin-left: 6px;
+}
+.timeline-item:last-child {
+    border-left: none;
+    padding-bottom: 0;
+}
+.timeline-marker {
+    position: absolute;
+    left: -8px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('statusSelect').addEventListener('change', function() {
+    const resultFields = document.getElementById('resultFields');
+    const lessonsField = document.getElementById('lessonsField');
+    const showFields = ['won', 'lost'].includes(this.value);
+    resultFields.style.display = showFields ? 'block' : 'none';
+    lessonsField.style.display = showFields ? 'block' : 'none';
+});
+</script>
+{% endblock %}

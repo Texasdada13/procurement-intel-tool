@@ -46,8 +46,26 @@
                         </a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="{{ url_for('rfps_list') }}"><i class="bi bi-list"></i> Browse RFPs</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('rfps_list', quick='true') }}"><i class="bi bi-lightning-fill text-warning"></i> Quick Response</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('rfps_list', urgency='urgent') }}"><i class="bi bi-alarm-fill text-danger"></i> Urgent (Due Soon)</a></li>
+                            <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{{ url_for('rfp_discover_page') }}"><i class="bi bi-search"></i> Discover RFPs</a></li>
                         </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle {% if 'bid' in request.endpoint or 'competitor' in request.endpoint or 'template' in request.endpoint %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-clipboard-check"></i> Bidding
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('bids_list') }}"><i class="bi bi-list-check"></i> Bid Tracker</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('competitors_list') }}"><i class="bi bi-people"></i> Competitors</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('templates_list') }}"><i class="bi bi-file-earmark-richtext"></i> Templates</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'settings_page' %}active{% endif %}" href="{{ url_for('settings_page') }}">
+                            <i class="bi bi-gear"></i> Settings
+                        </a>
                     </li>
                 </ul>
             </div>

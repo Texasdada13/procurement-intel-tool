@@ -6,14 +6,14 @@
 <div class="row mb-4">
     <div class="col-12">
         <h1><i class="bi bi-speedometer2"></i> Intelligence Dashboard</h1>
-        <p class="text-muted">Overview of procurement opportunities and leads</p>
+        <p class="text-muted">Overview of procurement opportunities, RFPs, and bid performance</p>
     </div>
 </div>
 
-<!-- Stats Cards -->
+<!-- Stats Cards Row 1 - Opportunities -->
 <div class="row mb-4">
     <div class="col-md-3">
-        <div class="card bg-primary text-white">
+        <div class="card bg-primary text-white h-100">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
@@ -26,7 +26,7 @@
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card bg-danger text-white">
+        <div class="card bg-danger text-white h-100">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
@@ -39,7 +39,7 @@
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card bg-success text-white">
+        <div class="card bg-success text-white h-100">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
@@ -52,7 +52,7 @@
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card bg-info text-white">
+        <div class="card bg-info text-white h-100">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
@@ -66,47 +66,116 @@
     </div>
 </div>
 
-<!-- Pipeline Overview -->
+<!-- Stats Cards Row 2 - RFPs & Bids -->
 <div class="row mb-4">
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-funnel"></i> Pipeline Status</h5>
-            </div>
+    <div class="col-md-3">
+        <div class="card border-primary h-100">
             <div class="card-body">
-                <div class="row text-center">
-                    <div class="col">
-                        <div class="p-3 border rounded">
-                            <h3 class="text-primary">{{ stats.opportunities_by_status.get('new', 0) }}</h3>
-                            <small class="text-muted">New</small>
-                        </div>
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title text-muted mb-0">Open RFPs</h6>
+                        <h2 class="mb-0 text-primary">{{ rfp_stats.open_rfps }}</h2>
+                        <small class="text-muted">{{ rfp_stats.relevant_rfps }} relevant</small>
                     </div>
-                    <div class="col">
-                        <div class="p-3 border rounded">
-                            <h3 class="text-info">{{ stats.opportunities_by_status.get('researching', 0) }}</h3>
-                            <small class="text-muted">Researching</small>
-                        </div>
-                    </div>
-                    <div class="col">
-                        <div class="p-3 border rounded">
-                            <h3 class="text-warning">{{ stats.opportunities_by_status.get('contacted', 0) }}</h3>
-                            <small class="text-muted">Contacted</small>
-                        </div>
-                    </div>
-                    <div class="col">
-                        <div class="p-3 border rounded">
-                            <h3 class="text-success">{{ stats.opportunities_by_status.get('in_discussion', 0) }}</h3>
-                            <small class="text-muted">In Discussion</small>
-                        </div>
-                    </div>
+                    <i class="bi bi-file-earmark-text fs-1 text-primary opacity-50"></i>
                 </div>
             </div>
         </div>
     </div>
-    <div class="col-md-6">
-        <div class="card">
+    <div class="col-md-3">
+        <div class="card border-warning h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title text-muted mb-0">Due Soon</h6>
+                        <h2 class="mb-0 text-warning">{{ rfp_stats.closing_soon }}</h2>
+                        <small class="text-muted">Within 7 days</small>
+                    </div>
+                    <i class="bi bi-alarm fs-1 text-warning opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-success h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title text-muted mb-0">Win Rate</h6>
+                        <h2 class="mb-0 text-success">{{ "%.0f"|format(bid_stats.win_rate) }}%</h2>
+                        <small class="text-muted">{{ bid_stats.total_wins }} won / {{ bid_stats.total_losses }} lost</small>
+                    </div>
+                    <i class="bi bi-trophy fs-1 text-success opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-info h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title text-muted mb-0">Value Won</h6>
+                        <h2 class="mb-0 text-info">${{ "{:,.0f}".format(bid_stats.total_value_won) }}</h2>
+                        <small class="text-muted">Total contract value</small>
+                    </div>
+                    <i class="bi bi-currency-dollar fs-1 text-info opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card h-100">
             <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-tags"></i> By Issue Type</h5>
+                <h5 class="mb-0"><i class="bi bi-pie-chart"></i> Bid Status Distribution</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="bidStatusChart" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-bar-chart"></i> RFPs by Category</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="rfpCategoryChart" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-funnel"></i> Pipeline Status</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="pipelineChart" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- RFP Sources and Quick Stats -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-globe"></i> RFPs by Source Portal</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="portalChart" height="180"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-tags"></i> Opportunities by Issue Type</h5>
             </div>
             <div class="card-body">
                 <div class="row">
@@ -114,10 +183,14 @@
                     <div class="col-6 mb-2">
                         <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded">
                             <span class="badge bg-{{ 'danger' if issue_type == 'legal' else 'warning' if issue_type == 'procurement' else 'info' if issue_type == 'ethics' else 'secondary' }}">
-                                {{ issue_type|title }}
+                                {{ issue_type|replace('_', ' ')|title }}
                             </span>
                             <strong>{{ count }}</strong>
                         </div>
+                    </div>
+                    {% else %}
+                    <div class="col-12 text-center text-muted py-4">
+                        No opportunities discovered yet
                     </div>
                     {% endfor %}
                 </div>
@@ -127,9 +200,9 @@
 </div>
 
 <!-- Top Opportunities -->
-<div class="row">
+<div class="row mb-4">
     <div class="col-md-6">
-        <div class="card">
+        <div class="card h-100">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0"><i class="bi bi-fire text-danger"></i> Hottest Opportunities</h5>
                 <a href="{{ url_for('opportunities_list', sort='heat_score') }}" class="btn btn-sm btn-outline-primary">View All</a>
@@ -141,7 +214,7 @@
                         <div class="d-flex w-100 justify-content-between align-items-center">
                             <div>
                                 <h6 class="mb-1">{{ opp.entity_name }}</h6>
-                                <small class="text-muted">{{ opp.title[:60] }}{% if opp.title|length > 60 %}...{% endif %}</small>
+                                <small class="text-muted">{{ opp.title[:50] }}{% if opp.title|length > 50 %}...{% endif %}</small>
                             </div>
                             <div class="text-end">
                                 <span class="badge rounded-pill bg-{{ 'danger' if opp.heat_score >= 70 else 'warning' if opp.heat_score >= 40 else 'secondary' }}">
@@ -164,31 +237,39 @@
     </div>
 
     <div class="col-md-6">
-        <div class="card">
+        <div class="card h-100">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0"><i class="bi bi-clock-history"></i> Recent Discoveries</h5>
-                <a href="{{ url_for('opportunities_list', sort='recent') }}" class="btn btn-sm btn-outline-primary">View All</a>
+                <h5 class="mb-0"><i class="bi bi-alarm text-warning"></i> Urgent RFPs</h5>
+                <a href="{{ url_for('rfps_list', urgency='urgent') }}" class="btn btn-sm btn-outline-warning">View All</a>
             </div>
             <div class="card-body p-0">
                 <div class="list-group list-group-flush">
-                    {% for opp in recent_opportunities %}
-                    <a href="{{ url_for('opportunity_detail', opportunity_id=opp.id) }}" class="list-group-item list-group-item-action">
+                    {% for rfp in urgent_rfps %}
+                    <a href="{{ url_for('rfp_detail', rfp_id=rfp.id) }}" class="list-group-item list-group-item-action">
                         <div class="d-flex w-100 justify-content-between align-items-center">
                             <div>
-                                <h6 class="mb-1">{{ opp.entity_name }}</h6>
-                                <small class="text-muted">{{ opp.title[:60] }}{% if opp.title|length > 60 %}...{% endif %}</small>
+                                <h6 class="mb-1">{{ rfp.title[:45] }}{% if rfp.title|length > 45 %}...{% endif %}</h6>
+                                <small class="text-muted">{{ rfp.entity_name or 'Unknown' }}</small>
                             </div>
                             <div class="text-end">
-                                <span class="badge bg-{{ opp.status|replace('_', '-') }}">{{ opp.status }}</span>
+                                <span class="badge rounded-pill bg-{{ 'danger' if rfp.days_until_due <= 1 else 'warning' if rfp.days_until_due <= 3 else 'info' }}">
+                                    {% if rfp.days_until_due == 0 %}
+                                    Today!
+                                    {% elif rfp.days_until_due == 1 %}
+                                    Tomorrow
+                                    {% else %}
+                                    {{ rfp.days_until_due }} days
+                                    {% endif %}
+                                </span>
                                 <br>
-                                <small class="text-muted">{{ opp.first_detected[:10] if opp.first_detected else 'Unknown' }}</small>
+                                <small class="text-muted">{{ rfp.due_date[:10] if rfp.due_date else 'TBD' }}</small>
                             </div>
                         </div>
                     </a>
                     {% else %}
                     <div class="list-group-item text-center text-muted py-4">
-                        <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-                        No opportunities yet. <a href="{{ url_for('discover_page') }}">Start discovering</a>
+                        <i class="bi bi-check-circle fs-1 d-block mb-2 text-success"></i>
+                        No urgent RFPs. <a href="{{ url_for('rfps_list') }}">Browse all RFPs</a>
                     </div>
                     {% endfor %}
                 </div>
@@ -198,22 +279,142 @@
 </div>
 
 <!-- Quick Actions -->
-<div class="row mt-4">
+<div class="row">
     <div class="col-12">
         <div class="card bg-light">
             <div class="card-body">
                 <h5 class="card-title"><i class="bi bi-lightning"></i> Quick Actions</h5>
-                <a href="{{ url_for('discover_page') }}" class="btn btn-primary me-2">
-                    <i class="bi bi-search"></i> Run Discovery
-                </a>
-                <a href="{{ url_for('opportunities_list', status='new') }}" class="btn btn-outline-primary me-2">
-                    <i class="bi bi-inbox"></i> View New Leads
-                </a>
-                <a href="{{ url_for('opportunities_list', min_score=70) }}" class="btn btn-outline-danger">
-                    <i class="bi bi-fire"></i> High Priority Only
-                </a>
+                <div class="btn-group flex-wrap">
+                    <a href="{{ url_for('discover_page') }}" class="btn btn-primary">
+                        <i class="bi bi-search"></i> Run Discovery
+                    </a>
+                    <a href="{{ url_for('rfp_discover_page') }}" class="btn btn-outline-primary">
+                        <i class="bi bi-file-earmark-text"></i> Discover RFPs
+                    </a>
+                    <a href="{{ url_for('rfps_list', quick='true') }}" class="btn btn-warning">
+                        <i class="bi bi-lightning-fill"></i> Quick Response RFPs
+                    </a>
+                    <a href="{{ url_for('bids_list') }}" class="btn btn-outline-success">
+                        <i class="bi bi-clipboard-check"></i> Bid Tracker
+                    </a>
+                    <a href="{{ url_for('settings_page') }}" class="btn btn-outline-secondary">
+                        <i class="bi bi-gear"></i> Settings
+                    </a>
+                </div>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+// Color palette
+const colors = {
+    primary: '#0d6efd',
+    success: '#198754',
+    danger: '#dc3545',
+    warning: '#ffc107',
+    info: '#0dcaf0',
+    secondary: '#6c757d',
+    dark: '#212529',
+    light: '#f8f9fa'
+};
+
+// Bid Status Chart
+const bidStatusData = {{ bid_status_data|tojson if bid_status_data else '{}' }};
+if (Object.keys(bidStatusData).length > 0) {
+    new Chart(document.getElementById('bidStatusChart'), {
+        type: 'doughnut',
+        data: {
+            labels: Object.keys(bidStatusData).map(s => s.replace('_', ' ').charAt(0).toUpperCase() + s.slice(1)),
+            datasets: [{
+                data: Object.values(bidStatusData),
+                backgroundColor: [colors.secondary, colors.primary, colors.info, colors.success, colors.danger, colors.dark]
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+}
+
+// RFP Category Chart
+const categoryData = {{ rfp_stats.by_category|tojson if rfp_stats.by_category else '{}' }};
+if (Object.keys(categoryData).length > 0) {
+    new Chart(document.getElementById('rfpCategoryChart'), {
+        type: 'bar',
+        data: {
+            labels: Object.keys(categoryData).map(s => s.replace('_', ' ').charAt(0).toUpperCase() + s.slice(1)),
+            datasets: [{
+                label: 'RFPs',
+                data: Object.values(categoryData),
+                backgroundColor: colors.primary
+            }]
+        },
+        options: {
+            responsive: true,
+            indexAxis: 'y',
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+}
+
+// Pipeline Chart
+const pipelineData = {{ stats.opportunities_by_status|tojson if stats.opportunities_by_status else '{}' }};
+if (Object.keys(pipelineData).length > 0) {
+    new Chart(document.getElementById('pipelineChart'), {
+        type: 'bar',
+        data: {
+            labels: Object.keys(pipelineData).map(s => s.replace('_', ' ').charAt(0).toUpperCase() + s.slice(1)),
+            datasets: [{
+                label: 'Opportunities',
+                data: Object.values(pipelineData),
+                backgroundColor: [colors.primary, colors.info, colors.warning, colors.success, colors.danger]
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+}
+
+// Portal Chart
+const portalData = {{ rfp_stats.by_portal|tojson if rfp_stats.by_portal else '{}' }};
+if (Object.keys(portalData).length > 0) {
+    new Chart(document.getElementById('portalChart'), {
+        type: 'pie',
+        data: {
+            labels: Object.keys(portalData),
+            datasets: [{
+                data: Object.values(portalData),
+                backgroundColor: [colors.primary, colors.success, colors.info, colors.warning, colors.danger, colors.secondary]
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'right'
+                }
+            }
+        }
+    });
+}
+</script>
 {% endblock %}

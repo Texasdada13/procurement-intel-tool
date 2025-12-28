@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+
+{% block title %}{{ competitor.name }} - Competitor Intel{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('competitors_list') }}">Competitors</a></li>
+                <li class="breadcrumb-item active">{{ competitor.name }}</li>
+            </ol>
+        </nav>
+        <h1><i class="bi bi-building"></i> {{ competitor.name }}</h1>
+        {% if competitor.website %}
+        <a href="{{ competitor.website }}" target="_blank" class="text-muted">
+            <i class="bi bi-globe"></i> {{ competitor.website }}
+        </a>
+        {% endif %}
+    </div>
+    <div class="col-md-4 text-end">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#editCompetitorModal">
+            <i class="bi bi-pencil"></i> Edit
+        </button>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Main Content -->
+    <div class="col-md-8">
+        <!-- Win History -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-trophy"></i> Win History Against Us</h5>
+                <span class="badge bg-danger fs-6">{{ wins|length }} wins</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Date</th>
+                                <th>RFP</th>
+                                <th>Winning Value</th>
+                                <th>Our Value</th>
+                                <th>Difference</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for win in wins %}
+                            <tr>
+                                <td>{{ win.win_date[:10] if win.win_date else 'Unknown' }}</td>
+                                <td>
+                                    {% if win.bid_id %}
+                                    <a href="{{ url_for('bid_detail', bid_id=win.bid_id) }}">
+                                        {{ win.rfp_title[:40] }}{% if win.rfp_title|length > 40 %}...{% endif %}
+                                    </a>
+                                    {% else %}
+                                    {{ win.rfp_title[:40] if win.rfp_title else 'Unknown RFP' }}{% if win.rfp_title and win.rfp_title|length > 40 %}...{% endif %}
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if win.winning_value %}
+                                    ${{ "{:,.0f}".format(win.winning_value) }}
+                                    {% else %}
+                                    -
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if win.our_value %}
+                                    ${{ "{:,.0f}".format(win.our_value) }}
+                                    {% else %}
+                                    -
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if win.winning_value and win.our_value %}
+                                        {% set diff = win.winning_value - win.our_value %}
+                                        {% if diff < 0 %}
+                                        <span class="text-success">${{ "{:,.0f}".format(diff|abs) }} lower</span>
+                                        {% elif diff > 0 %}
+                                        <span class="text-danger">${{ "{:,.0f}".format(diff) }} higher</span>
+                                        {% else %}
+                                        <span class="text-muted">Same</span>
+                                        {% endif %}
+                                    {% else %}
+                                    -
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center py-4 text-muted">
+                                    No recorded wins against us yet
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Analysis -->
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0"><i class="bi bi-star-fill"></i> Their Strengths</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if competitor.strengths %}
+                        <p>{{ competitor.strengths }}</p>
+                        {% else %}
+                        <p class="text-muted mb-0">No strengths documented yet</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header bg-danger text-white">
+                        <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Their Weaknesses</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if competitor.weaknesses %}
+                        <p>{{ competitor.weaknesses }}</p>
+                        {% else %}
+                        <p class="text-muted mb-0">No weaknesses documented yet</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Notes -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-journal-text"></i> Intelligence Notes</h5>
+            </div>
+            <div class="card-body">
+                {% if competitor.notes %}
+                <p>{{ competitor.notes }}</p>
+                {% else %}
+                <p class="text-muted mb-0">No additional notes</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="col-md-4">
+        <!-- Stats Card -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Statistics</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <tr>
+                        <td><i class="bi bi-trophy text-danger"></i> Wins Against Us</td>
+                        <td><strong>{{ wins|length }}</strong></td>
+                    </tr>
+                    <tr>
+                        <td><i class="bi bi-cash"></i> Total Value Won</td>
+                        <td><strong>${{ "{:,.0f}".format(total_value_won) }}</strong></td>
+                    </tr>
+                    <tr>
+                        <td><i class="bi bi-graph-down-arrow"></i> Value We Lost</td>
+                        <td><strong>${{ "{:,.0f}".format(our_value_lost) }}</strong></td>
+                    </tr>
+                    <tr>
+                        <td><i class="bi bi-calculator"></i> Avg Win Margin</td>
+                        <td>
+                            {% if avg_margin is not none %}
+                            <strong>{{ "{:.1f}".format(avg_margin) }}%</strong>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- Contact Info -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Contact Information</h5>
+            </div>
+            <div class="card-body">
+                {% if competitor.contact_name or competitor.contact_email or competitor.contact_phone %}
+                <table class="table table-sm mb-0">
+                    {% if competitor.contact_name %}
+                    <tr>
+                        <td><i class="bi bi-person"></i></td>
+                        <td>{{ competitor.contact_name }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if competitor.contact_email %}
+                    <tr>
+                        <td><i class="bi bi-envelope"></i></td>
+                        <td><a href="mailto:{{ competitor.contact_email }}">{{ competitor.contact_email }}</a></td>
+                    </tr>
+                    {% endif %}
+                    {% if competitor.contact_phone %}
+                    <tr>
+                        <td><i class="bi bi-telephone"></i></td>
+                        <td>{{ competitor.contact_phone }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+                {% else %}
+                <p class="text-muted mb-0">No contact information</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('competitors_list') }}" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left"></i> Back to List
+                    </a>
+                    <form action="{{ url_for('competitor_delete', competitor_id=competitor.id) }}" method="post"
+                          onsubmit="return confirm('Delete this competitor and all win records?');">
+                        <button type="submit" class="btn btn-outline-danger w-100">
+                            <i class="bi bi-trash"></i> Delete Competitor
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal fade" id="editCompetitorModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="{{ url_for('competitor_update', competitor_id=competitor.id) }}" method="post">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-pencil"></i> Edit Competitor</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Company Name <span class="text-danger">*</span></label>
+                        <input type="text" name="name" class="form-control" value="{{ competitor.name }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Website</label>
+                        <input type="url" name="website" class="form-control" value="{{ competitor.website or '' }}">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Contact Name</label>
+                            <input type="text" name="contact_name" class="form-control" value="{{ competitor.contact_name or '' }}">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Contact Email</label>
+                            <input type="email" name="contact_email" class="form-control" value="{{ competitor.contact_email or '' }}">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Strengths</label>
+                        <textarea name="strengths" class="form-control" rows="2">{{ competitor.strengths or '' }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Weaknesses</label>
+                        <textarea name="weaknesses" class="form-control" rows="2">{{ competitor.weaknesses or '' }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Notes</label>
+                        <textarea name="notes" class="form-control" rows="2">{{ competitor.notes or '' }}</textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

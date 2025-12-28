@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+
+{% block title %}Response Templates - Procurement Intel{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-6">
+        <h1><i class="bi bi-file-earmark-richtext"></i> Response Templates</h1>
+        <p class="text-muted">Reusable content for RFP responses</p>
+    </div>
+    <div class="col-md-6 text-end">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTemplateModal">
+            <i class="bi bi-plus"></i> New Template
+        </button>
+    </div>
+</div>
+
+<!-- Categories Filter -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="btn-group" role="group">
+            <a href="{{ url_for('templates_list') }}"
+               class="btn {{ 'btn-primary' if not category_filter else 'btn-outline-primary' }}">
+                All
+            </a>
+            {% for cat in categories %}
+            <a href="{{ url_for('templates_list', category=cat) }}"
+               class="btn {{ 'btn-primary' if category_filter == cat else 'btn-outline-primary' }}">
+                {{ cat|title }}
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Templates Grid -->
+<div class="row">
+    {% for template in templates %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="badge bg-secondary">{{ template.category }}</span>
+                <small class="text-muted">Used {{ template.use_count or 0 }}x</small>
+            </div>
+            <div class="card-body">
+                <h5 class="card-title">{{ template.name }}</h5>
+                <p class="card-text text-muted small">
+                    {{ template.content[:150] }}{% if template.content|length > 150 %}...{% endif %}
+                </p>
+            </div>
+            <div class="card-footer bg-transparent">
+                <div class="btn-group w-100">
+                    <button class="btn btn-outline-primary btn-sm" onclick="viewTemplate({{ template.id }})">
+                        <i class="bi bi-eye"></i> View
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="copyTemplate({{ template.id }})">
+                        <i class="bi bi-clipboard"></i> Copy
+                    </button>
+                    <button class="btn btn-outline-info btn-sm" onclick="editTemplate({{ template.id }})">
+                        <i class="bi bi-pencil"></i> Edit
+                    </button>
+                    <button class="btn btn-outline-danger btn-sm" onclick="deleteTemplate({{ template.id }}, '{{ template.name }}')">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <i class="bi bi-file-earmark-richtext fs-1 text-muted d-block mb-3"></i>
+                <p class="text-muted">No templates yet</p>
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTemplateModal">
+                    <i class="bi bi-plus"></i> Create Your First Template
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Add Template Modal -->
+<div class="modal fade" id="addTemplateModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form action="{{ url_for('template_create') }}" method="post">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-plus-lg"></i> New Template</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-8">
+                            <label class="form-label">Template Name <span class="text-danger">*</span></label>
+                            <input type="text" name="name" class="form-control" required
+                                   placeholder="e.g., Company Overview, Technical Approach">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Category</label>
+                            <select name="category" class="form-select">
+                                <option value="general">General</option>
+                                <option value="technical">Technical</option>
+                                <option value="management">Management</option>
+                                <option value="past_performance">Past Performance</option>
+                                <option value="pricing">Pricing</option>
+                                <option value="certifications">Certifications</option>
+                                <option value="cover_letter">Cover Letter</option>
+                                <option value="executive_summary">Executive Summary</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Content <span class="text-danger">*</span></label>
+                        <textarea name="content" class="form-control" rows="10" required
+                                  placeholder="Enter your template content here. You can use placeholders like {company_name}, {project_name}, etc."></textarea>
+                        <small class="text-muted">
+                            Tip: Use placeholders like {company_name}, {project_name}, {date} for dynamic content
+                        </small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tags</label>
+                        <input type="text" name="tags" class="form-control"
+                               placeholder="Comma-separated tags, e.g., federal, state, technology">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> Save Template
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- View Template Modal -->
+<div class="modal fade" id="viewTemplateModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="viewTemplateTitle"></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2">
+                    <span class="badge bg-secondary" id="viewTemplateCategory"></span>
+                </div>
+                <div id="viewTemplateContent" class="bg-light p-3 rounded" style="white-space: pre-wrap; font-family: inherit;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="copyCurrentTemplate()">
+                    <i class="bi bi-clipboard"></i> Copy to Clipboard
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Template Modal -->
+<div class="modal fade" id="editTemplateModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form id="editTemplateForm" method="post">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-pencil"></i> Edit Template</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-8">
+                            <label class="form-label">Template Name <span class="text-danger">*</span></label>
+                            <input type="text" name="name" id="editTemplateName" class="form-control" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Category</label>
+                            <select name="category" id="editTemplateCategory" class="form-select">
+                                <option value="general">General</option>
+                                <option value="technical">Technical</option>
+                                <option value="management">Management</option>
+                                <option value="past_performance">Past Performance</option>
+                                <option value="pricing">Pricing</option>
+                                <option value="certifications">Certifications</option>
+                                <option value="cover_letter">Cover Letter</option>
+                                <option value="executive_summary">Executive Summary</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Content <span class="text-danger">*</span></label>
+                        <textarea name="content" id="editTemplateContent" class="form-control" rows="10" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tags</label>
+                        <input type="text" name="tags" id="editTemplateTags" class="form-control">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Form (hidden) -->
+<form id="deleteForm" method="post" style="display: none;"></form>
+
+<!-- Template Data (for JS) -->
+<script>
+const templateData = {
+    {% for template in templates %}
+    {{ template.id }}: {
+        name: "{{ template.name|e }}",
+        category: "{{ template.category }}",
+        content: {{ template.content|tojson }},
+        tags: "{{ template.tags or '' }}"
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+};
+
+let currentTemplateId = null;
+
+function viewTemplate(id) {
+    const template = templateData[id];
+    currentTemplateId = id;
+    document.getElementById('viewTemplateTitle').textContent = template.name;
+    document.getElementById('viewTemplateCategory').textContent = template.category;
+    document.getElementById('viewTemplateContent').textContent = template.content;
+    new bootstrap.Modal(document.getElementById('viewTemplateModal')).show();
+}
+
+function copyTemplate(id) {
+    const template = templateData[id];
+    navigator.clipboard.writeText(template.content).then(() => {
+        alert('Template copied to clipboard!');
+    });
+}
+
+function copyCurrentTemplate() {
+    if (currentTemplateId) {
+        copyTemplate(currentTemplateId);
+    }
+}
+
+function editTemplate(id) {
+    const template = templateData[id];
+    document.getElementById('editTemplateName').value = template.name;
+    document.getElementById('editTemplateCategory').value = template.category;
+    document.getElementById('editTemplateContent').value = template.content;
+    document.getElementById('editTemplateTags').value = template.tags;
+    document.getElementById('editTemplateForm').action = '/templates/' + id + '/update';
+    new bootstrap.Modal(document.getElementById('editTemplateModal')).show();
+}
+
+function deleteTemplate(id, name) {
+    if (confirm('Are you sure you want to delete "' + name + '"?')) {
+        const form = document.getElementById('deleteForm');
+        form.action = '/templates/' + id + '/delete';
+        form.submit();
+    }
+}
+</script>
+{% endblock %}

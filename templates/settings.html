@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Procurement Intel{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1><i class="bi bi-gear"></i> Settings</h1>
+        <p class="text-muted">Configure notifications, scheduling, and preferences</p>
+    </div>
+</div>
+
+<!-- Scheduler Status -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-clock-history"></i> Scheduler Status</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-3">
+                    <span class="badge {{ 'bg-success' if scheduler.running else 'bg-secondary' }} fs-6 me-3">
+                        {{ 'Running' if scheduler.running else 'Stopped' }}
+                    </span>
+                    {% if not scheduler.running %}
+                    <form action="{{ url_for('start_scheduler_route') }}" method="post" class="d-inline">
+                        <button type="submit" class="btn btn-success btn-sm">
+                            <i class="bi bi-play-fill"></i> Start Scheduler
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+
+                <table class="table table-sm">
+                    <tr>
+                        <td><i class="bi bi-search"></i> Last Discovery</td>
+                        <td>{{ scheduler.last_discovery }}</td>
+                    </tr>
+                    <tr>
+                        <td><i class="bi bi-alarm"></i> Last Deadline Check</td>
+                        <td>{{ scheduler.last_deadline_check }}</td>
+                    </tr>
+                    <tr>
+                        <td><i class="bi bi-envelope"></i> Last Daily Digest</td>
+                        <td>{{ scheduler.last_daily_digest }}</td>
+                    </tr>
+                </table>
+
+                <form action="{{ url_for('run_scheduler_now') }}" method="post">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-arrow-clockwise"></i> Run Discovery Now
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-bell"></i> Test Notifications</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-3">
+                    Send test emails to verify notification setup. If SMTP is not configured,
+                    emails will be saved to the <code>data/emails</code> folder.
+                </p>
+
+                <div class="d-flex gap-2 flex-wrap">
+                    <form action="{{ url_for('test_notification') }}" method="post" class="d-inline">
+                        <input type="hidden" name="type" value="digest">
+                        <button type="submit" class="btn btn-outline-primary">
+                            <i class="bi bi-newspaper"></i> Daily Digest
+                        </button>
+                    </form>
+
+                    <form action="{{ url_for('test_notification') }}" method="post" class="d-inline">
+                        <input type="hidden" name="type" value="deadline">
+                        <button type="submit" class="btn btn-outline-warning">
+                            <i class="bi bi-alarm"></i> Deadline Reminder
+                        </button>
+                    </form>
+
+                    <form action="{{ url_for('test_notification') }}" method="post" class="d-inline">
+                        <input type="hidden" name="type" value="discovery">
+                        <button type="submit" class="btn btn-outline-success">
+                            <i class="bi bi-search"></i> Discovery Alert
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Email Configuration -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-envelope-at"></i> Email Configuration</h5>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-info">
+            <h6><i class="bi bi-info-circle"></i> Setup Instructions</h6>
+            <p class="mb-2">To enable email notifications, set these environment variables:</p>
+            <code class="d-block mb-2">
+                SENDER_EMAIL=your-email@gmail.com<br>
+                SENDER_PASSWORD=your-app-password<br>
+                RECIPIENT_EMAIL=mukhopadhyay.shuva@gmail.com<br>
+                SMTP_SERVER=smtp.gmail.com<br>
+                SMTP_PORT=587
+            </code>
+            <p class="mb-0">
+                <strong>For Gmail:</strong> Create an App Password at
+                <a href="https://myaccount.google.com/apppasswords" target="_blank">Google Account Settings</a>
+                (requires 2FA enabled).
+            </p>
+        </div>
+
+        <h6>Current Configuration</h6>
+        <table class="table table-sm">
+            <tr>
+                <td>Recipient Email</td>
+                <td><code>mukhopadhyay.shuva@gmail.com</code></td>
+            </tr>
+            <tr>
+                <td>SMTP Server</td>
+                <td><code>smtp.gmail.com:587</code></td>
+            </tr>
+            <tr>
+                <td>Sender Email</td>
+                <td><code>{{ 'Configured' if config_sender else 'Not configured (emails saved to file)' }}</code></td>
+            </tr>
+        </table>
+    </div>
+</div>
+
+<!-- Schedule Configuration -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-calendar-week"></i> Schedule Configuration</h5>
+    </div>
+    <div class="card-body">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Task</th>
+                    <th>Schedule</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><i class="bi bi-search"></i> RFP Discovery</td>
+                    <td>Every 6 hours</td>
+                    <td>Scrapes all procurement portals for new RFPs</td>
+                </tr>
+                <tr>
+                    <td><i class="bi bi-alarm"></i> Deadline Reminder</td>
+                    <td>Daily</td>
+                    <td>Sends reminder for RFPs due within 3 days</td>
+                </tr>
+                <tr>
+                    <td><i class="bi bi-newspaper"></i> Daily Digest</td>
+                    <td>Daily at 8:00 AM</td>
+                    <td>Summary of new RFPs and upcoming deadlines</td>
+                </tr>
+            </tbody>
+        </table>
+        <p class="text-muted">
+            <i class="bi bi-info-circle"></i>
+            To customize the schedule, edit <code>src/scheduler.py</code> and modify <code>SCHEDULE_CONFIG</code>.
+        </p>
+    </div>
+</div>
+
+<!-- Calendar Integration -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-calendar-event"></i> Calendar Integration</h5>
+    </div>
+    <div class="card-body">
+        <p class="text-muted mb-3">
+            Export RFP and bid deadlines to your calendar application (Google Calendar, Outlook, Apple Calendar).
+        </p>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h6><i class="bi bi-file-earmark-text text-primary"></i> RFP Deadlines</h6>
+                        <p class="small text-muted mb-2">Export all open RFP due dates</p>
+                        <div class="btn-group">
+                            <a href="{{ url_for('calendar_rfps') }}" class="btn btn-outline-primary btn-sm">
+                                <i class="bi bi-download"></i> Download .ics
+                            </a>
+                            <a href="{{ url_for('calendar_rfps', relevant='true') }}" class="btn btn-outline-secondary btn-sm">
+                                Relevant Only
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 mb-3">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h6><i class="bi bi-clipboard-check text-success"></i> Bid Deadlines</h6>
+                        <p class="small text-muted mb-2">Export your active bid deadlines</p>
+                        <div class="btn-group">
+                            <a href="{{ url_for('calendar_bids') }}" class="btn btn-outline-success btn-sm">
+                                <i class="bi bi-download"></i> Download .ics
+                            </a>
+                            <a href="{{ url_for('calendar_bids', status='preparing') }}" class="btn btn-outline-secondary btn-sm">
+                                In Progress Only
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="alert alert-info mb-0">
+            <h6><i class="bi bi-info-circle"></i> How to Use</h6>
+            <ol class="mb-0 small">
+                <li>Click "Download .ics" to get the calendar file</li>
+                <li>Open the file to import into your calendar application</li>
+                <li>Events include reminder alarms (24-48 hours before deadline)</li>
+                <li>Re-download periodically to get updated deadlines</li>
+            </ol>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-lightning"></i> Quick Actions</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4">
+                <a href="{{ url_for('rfps_list', quick='true') }}" class="btn btn-warning w-100 mb-2">
+                    <i class="bi bi-lightning-fill"></i> View Quick Response RFPs
+                </a>
+            </div>
+            <div class="col-md-4">
+                <a href="{{ url_for('rfps_list', urgency='urgent') }}" class="btn btn-danger w-100 mb-2">
+                    <i class="bi bi-alarm-fill"></i> View Urgent RFPs
+                </a>
+            </div>
+            <div class="col-md-4">
+                <a href="{{ url_for('rfp_discover_page') }}" class="btn btn-primary w-100 mb-2">
+                    <i class="bi bi-search"></i> Manual Discovery
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

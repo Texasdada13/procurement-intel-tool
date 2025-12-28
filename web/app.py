@@ -18,6 +18,9 @@ from src import database as db
 from src.discovery import DiscoveryEngine, manual_add_article
 from src.scoring import ScoringEngine, get_score_breakdown
 from src.rfp_discovery import RFPDiscoveryEngine, manual_add_rfp
+from src.notifications import NotificationService, send_daily_digest, send_deadline_alerts
+from src.scheduler import get_scheduler, start_scheduler, run_discovery_now
+from src.calendar_export import export_rfp_deadlines, export_bid_deadlines, export_single_rfp
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -35,17 +38,42 @@ def dashboard():
     """Main dashboard showing overview of opportunities."""
     stats = db.get_dashboard_stats()
     opportunities = db.get_all_opportunities()
+    rfp_stats = db.get_rfp_stats()
+    bid_stats = db.get_bid_stats()
 
     # Get top opportunities (highest heat scores)
-    top_opportunities = sorted(opportunities, key=lambda x: x['heat_score'], reverse=True)[:10]
+    top_opportunities = sorted(opportunities, key=lambda x: x['heat_score'], reverse=True)[:5]
 
     # Get recent opportunities
-    recent_opportunities = sorted(opportunities, key=lambda x: x['first_detected'] or '', reverse=True)[:10]
+    recent_opportunities = sorted(opportunities, key=lambda x: x['first_detected'] or '', reverse=True)[:5]
+
+    # Get urgent RFPs (due soon)
+    today = datetime.now().date()
+    all_rfps = db.get_open_rfps(relevant_only=True)
+    urgent_rfps = []
+    for rfp in all_rfps:
+        if rfp.get('due_date'):
+            try:
+                due = datetime.strptime(rfp['due_date'][:10], '%Y-%m-%d').date()
+                rfp['days_until_due'] = (due - today).days
+                if 0 <= rfp['days_until_due'] <= 7:
+                    urgent_rfps.append(rfp)
+            except (ValueError, TypeError):
+                pass
+
+    urgent_rfps = sorted(urgent_rfps, key=lambda x: x['days_until_due'])[:5]
+
+    # Bid status data for charts
+    bid_status_data = bid_stats.get('by_status', {})
 
     return render_template('dashboard.html',
                          stats=stats,
+                         rfp_stats=rfp_stats,
+                         bid_stats=bid_stats,
+                         bid_status_data=bid_status_data,
                          top_opportunities=top_opportunities,
-                         recent_opportunities=recent_opportunities)
+                         recent_opportunities=recent_opportunities,
+                         urgent_rfps=urgent_rfps)
 
 
 @app.route('/opportunities')
@@ -581,6 +609,429 @@ def export_rfps_csv():
     return Response(
         output.getvalue(),
         mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename={filename}'}
+    )
+
+
+# ============== Bid Tracking Routes ==============
+
+@app.route('/bids')
+def bids_list():
+    """List all bid responses."""
+    status_filter = request.args.get('status')
+    bids = db.get_all_bid_responses(status=status_filter)
+    bid_stats = db.get_bid_stats()
+
+    return render_template('bids.html',
+                         bids=bids,
+                         stats=bid_stats,
+                         status_filter=status_filter)
+
+
+@app.route('/bid/<int:bid_id>')
+def bid_detail(bid_id):
+    """View bid response details."""
+    bid = db.get_bid_response(bid_id)
+    if not bid:
+        flash('Bid response not found', 'error')
+        return redirect(url_for('bids_list'))
+
+    rfp = db.get_rfp(bid['rfp_id'])
+    competitors = db.get_all_competitors()
+
+    return render_template('bid_detail.html', bid=bid, rfp=rfp, competitors=competitors)
+
+
+@app.route('/rfp/<int:rfp_id>/bid', methods=['POST'])
+def create_bid(rfp_id):
+    """Create a bid response for an RFP."""
+    existing = db.get_bid_response_for_rfp(rfp_id)
+    if existing:
+        flash('Bid response already exists for this RFP', 'warning')
+        return redirect(url_for('bid_detail', bid_id=existing['id']))
+
+    status = request.form.get('status', 'considering')
+    notes = request.form.get('notes', '')
+
+    bid_id = db.create_bid_response(rfp_id, status=status, notes=notes)
+    flash('Bid response created', 'success')
+
+    return redirect(url_for('bid_detail', bid_id=bid_id))
+
+
+@app.route('/bid/<int:bid_id>/update', methods=['POST'])
+def bid_update(bid_id):
+    """Update a bid response."""
+    updates = {}
+
+    if request.form.get('status'):
+        updates['status'] = request.form.get('status')
+    if request.form.get('proposal_value'):
+        try:
+            updates['proposal_value'] = float(request.form.get('proposal_value'))
+        except ValueError:
+            pass
+    if request.form.get('notes') is not None:
+        updates['notes'] = request.form.get('notes')
+    if request.form.get('lessons_learned') is not None:
+        updates['lessons_learned'] = request.form.get('lessons_learned')
+    if request.form.get('winner_name'):
+        updates['winner_name'] = request.form.get('winner_name')
+    if request.form.get('winning_value'):
+        try:
+            updates['winning_value'] = float(request.form.get('winning_value'))
+        except ValueError:
+            pass
+    if request.form.get('decision_date'):
+        updates['decision_date'] = request.form.get('decision_date')
+    if request.form.get('submission_date'):
+        updates['submission_date'] = request.form.get('submission_date')
+    if request.form.get('result_date'):
+        updates['result_date'] = request.form.get('result_date')
+
+    if updates:
+        db.update_bid_response(bid_id, **updates)
+
+        # If lost, record competitor win
+        bid = db.get_bid_response(bid_id)
+        if updates.get('status') == 'lost' and updates.get('winner_name'):
+            # Check if competitor exists or create new
+            competitors = db.get_all_competitors()
+            competitor = next((c for c in competitors if c['name'].lower() == updates['winner_name'].lower()), None)
+            if not competitor:
+                competitor_id = db.create_competitor(name=updates['winner_name'])
+            else:
+                competitor_id = competitor['id']
+            # Record win
+            db.add_competitor_win(
+                competitor_id,
+                bid_id=bid_id,
+                rfp_title=bid.get('rfp_title'),
+                winning_value=updates.get('winning_value'),
+                our_value=bid.get('proposal_value')
+            )
+
+        flash('Bid response updated', 'success')
+
+    return redirect(url_for('bid_detail', bid_id=bid_id))
+
+
+@app.route('/bid/<int:bid_id>/delete', methods=['POST'])
+def bid_delete(bid_id):
+    """Delete a bid response."""
+    db.delete_bid_response(bid_id)
+    flash('Bid response deleted', 'success')
+    return redirect(url_for('bids_list'))
+
+
+# ============== Competitor Routes ==============
+
+@app.route('/competitors')
+def competitors_list():
+    """List all competitors."""
+    competitors = db.get_all_competitors()
+
+    # Calculate stats
+    total_losses = sum(c.get('win_count', 0) for c in competitors)
+    total_value_lost = sum(c.get('total_value_won', 0) or 0 for c in competitors)
+    top_competitor = max(competitors, key=lambda c: c.get('win_count', 0)) if competitors else None
+
+    return render_template('competitors.html',
+                         competitors=competitors,
+                         total_losses=total_losses,
+                         total_value_lost=total_value_lost,
+                         top_competitor=top_competitor)
+
+
+@app.route('/competitor/<int:competitor_id>')
+def competitor_detail(competitor_id):
+    """View competitor details."""
+    competitor = db.get_competitor(competitor_id)
+    if not competitor:
+        flash('Competitor not found', 'error')
+        return redirect(url_for('competitors_list'))
+
+    wins = db.get_competitor_wins(competitor_id)
+
+    # Calculate stats
+    total_value_won = sum(w.get('winning_value', 0) or 0 for w in wins)
+    our_value_lost = sum(w.get('our_value', 0) or 0 for w in wins)
+
+    # Calculate average margin
+    margins = []
+    for w in wins:
+        if w.get('winning_value') and w.get('our_value') and w['our_value'] > 0:
+            margin = ((w['our_value'] - w['winning_value']) / w['our_value']) * 100
+            margins.append(margin)
+    avg_margin = sum(margins) / len(margins) if margins else None
+
+    return render_template('competitor_detail.html',
+                         competitor=competitor,
+                         wins=wins,
+                         total_value_won=total_value_won,
+                         our_value_lost=our_value_lost,
+                         avg_margin=avg_margin)
+
+
+@app.route('/competitors/add', methods=['POST'])
+def competitor_create():
+    """Add a new competitor."""
+    name = request.form.get('name')
+    if not name:
+        flash('Competitor name is required', 'error')
+        return redirect(url_for('competitors_list'))
+
+    competitor_id = db.create_competitor(
+        name=name,
+        website=request.form.get('website'),
+        contact_name=request.form.get('contact_name'),
+        contact_email=request.form.get('contact_email'),
+        strengths=request.form.get('strengths'),
+        weaknesses=request.form.get('weaknesses'),
+        notes=request.form.get('notes')
+    )
+
+    flash('Competitor added', 'success')
+    return redirect(url_for('competitor_detail', competitor_id=competitor_id))
+
+
+@app.route('/competitors/<int:competitor_id>/update', methods=['POST'])
+def competitor_update(competitor_id):
+    """Update a competitor."""
+    updates = {}
+
+    if request.form.get('name'):
+        updates['name'] = request.form.get('name')
+    if request.form.get('website') is not None:
+        updates['website'] = request.form.get('website')
+    if request.form.get('contact_name') is not None:
+        updates['contact_name'] = request.form.get('contact_name')
+    if request.form.get('contact_email') is not None:
+        updates['contact_email'] = request.form.get('contact_email')
+    if request.form.get('strengths') is not None:
+        updates['strengths'] = request.form.get('strengths')
+    if request.form.get('weaknesses') is not None:
+        updates['weaknesses'] = request.form.get('weaknesses')
+    if request.form.get('notes') is not None:
+        updates['notes'] = request.form.get('notes')
+
+    if updates:
+        db.update_competitor(competitor_id, **updates)
+        flash('Competitor updated', 'success')
+
+    return redirect(url_for('competitor_detail', competitor_id=competitor_id))
+
+
+@app.route('/competitors/<int:competitor_id>/delete', methods=['POST'])
+def competitor_delete(competitor_id):
+    """Delete a competitor."""
+    db.delete_competitor(competitor_id)
+    flash('Competitor deleted', 'success')
+    return redirect(url_for('competitors_list'))
+
+
+@app.route('/competitor/<int:competitor_id>/win', methods=['POST'])
+def add_competitor_win_route(competitor_id):
+    """Record a competitor win."""
+    db.add_competitor_win(
+        competitor_id,
+        entity_name=request.form.get('entity_name'),
+        contract_title=request.form.get('contract_title'),
+        contract_value=float(request.form.get('contract_value', 0)) if request.form.get('contract_value') else None,
+        award_date=request.form.get('award_date'),
+        source_url=request.form.get('source_url'),
+        notes=request.form.get('notes')
+    )
+
+    flash('Competitor win recorded', 'success')
+    return redirect(url_for('competitor_detail', competitor_id=competitor_id))
+
+
+# ============== Template Routes ==============
+
+@app.route('/templates')
+def templates_list():
+    """List all response templates."""
+    category_filter = request.args.get('category')
+    templates = db.get_all_templates(category=category_filter)
+
+    # Get unique categories
+    all_templates = db.get_all_templates()
+    categories = list(set(t.get('category', 'general') for t in all_templates if t.get('category')))
+    categories.sort()
+
+    return render_template('response_templates.html',
+                         templates=templates,
+                         categories=categories,
+                         category_filter=category_filter)
+
+
+@app.route('/templates/add', methods=['POST'])
+def template_create():
+    """Add a new template."""
+    name = request.form.get('name')
+    content = request.form.get('content')
+
+    if not name or not content:
+        flash('Name and content are required', 'error')
+        return redirect(url_for('templates_list'))
+
+    template_id = db.create_template(
+        name=name,
+        content=content,
+        category=request.form.get('category', 'general'),
+        tags=request.form.get('tags')
+    )
+
+    flash('Template created', 'success')
+    return redirect(url_for('templates_list'))
+
+
+@app.route('/templates/<int:template_id>/update', methods=['POST'])
+def template_update(template_id):
+    """Update a template."""
+    updates = {}
+
+    if request.form.get('name'):
+        updates['name'] = request.form.get('name')
+    if request.form.get('content'):
+        updates['content'] = request.form.get('content')
+    if request.form.get('category'):
+        updates['category'] = request.form.get('category')
+    if request.form.get('tags') is not None:
+        updates['tags'] = request.form.get('tags')
+
+    if updates:
+        db.update_template(template_id, **updates)
+        flash('Template updated', 'success')
+
+    return redirect(url_for('templates_list'))
+
+
+@app.route('/templates/<int:template_id>/delete', methods=['POST'])
+def template_delete(template_id):
+    """Delete a template."""
+    db.delete_template(template_id)
+    flash('Template deleted', 'success')
+    return redirect(url_for('templates_list'))
+
+
+# ============== Notification Routes ==============
+
+@app.route('/settings')
+def settings_page():
+    """Settings and notification configuration page."""
+    scheduler = get_scheduler()
+    scheduler_status = {
+        'running': scheduler.running,
+        'last_discovery': scheduler.last_discovery.strftime('%Y-%m-%d %H:%M') if scheduler.last_discovery else 'Never',
+        'last_deadline_check': scheduler.last_deadline_check.strftime('%Y-%m-%d %H:%M') if scheduler.last_deadline_check else 'Never',
+        'last_daily_digest': scheduler.last_daily_digest.strftime('%Y-%m-%d %H:%M') if scheduler.last_daily_digest else 'Never',
+    }
+
+    # Check if SMTP is configured
+    config_sender = bool(os.environ.get('SENDER_EMAIL'))
+
+    return render_template('settings.html', scheduler=scheduler_status, config_sender=config_sender)
+
+
+@app.route('/api/notifications/test', methods=['POST'])
+def test_notification():
+    """Send a test notification email."""
+    notification_type = request.form.get('type', 'digest')
+
+    try:
+        if notification_type == 'digest':
+            send_daily_digest()
+            flash('Daily digest email sent (check data/emails folder if SMTP not configured)', 'success')
+        elif notification_type == 'deadline':
+            send_deadline_alerts(days=7)
+            flash('Deadline reminder email sent', 'success')
+        elif notification_type == 'discovery':
+            # Get recent RFPs for test
+            rfps = db.get_all_rfps()[:10]
+            service = NotificationService()
+            service.send_new_rfps_alert(rfps)
+            flash('Discovery alert email sent', 'success')
+        else:
+            flash('Unknown notification type', 'error')
+
+    except Exception as e:
+        flash(f'Failed to send notification: {str(e)}', 'error')
+
+    return redirect(url_for('settings_page'))
+
+
+@app.route('/api/scheduler/start', methods=['POST'])
+def start_scheduler_route():
+    """Start the background scheduler."""
+    try:
+        scheduler = start_scheduler()
+        flash('Scheduler started successfully', 'success')
+    except Exception as e:
+        flash(f'Failed to start scheduler: {str(e)}', 'error')
+
+    return redirect(url_for('settings_page'))
+
+
+@app.route('/api/scheduler/run', methods=['POST'])
+def run_scheduler_now():
+    """Run discovery immediately."""
+    try:
+        run_discovery_now()
+        flash('Discovery started in background', 'success')
+    except Exception as e:
+        flash(f'Failed to run discovery: {str(e)}', 'error')
+
+    return redirect(url_for('settings_page'))
+
+
+# ============== Calendar Export Routes ==============
+
+@app.route('/calendar/rfps.ics')
+def calendar_rfps():
+    """Export all RFP deadlines as ICS calendar."""
+    relevant_only = request.args.get('relevant', 'true').lower() == 'true'
+    status = request.args.get('status', 'open')
+
+    ics_content = export_rfp_deadlines(relevant_only=relevant_only, status=status)
+
+    return Response(
+        ics_content,
+        mimetype='text/calendar',
+        headers={'Content-Disposition': 'attachment; filename=rfp_deadlines.ics'}
+    )
+
+
+@app.route('/calendar/bids.ics')
+def calendar_bids():
+    """Export all bid deadlines as ICS calendar."""
+    status = request.args.get('status')
+
+    ics_content = export_bid_deadlines(status=status)
+
+    return Response(
+        ics_content,
+        mimetype='text/calendar',
+        headers={'Content-Disposition': 'attachment; filename=bid_deadlines.ics'}
+    )
+
+
+@app.route('/calendar/rfp/<int:rfp_id>.ics')
+def calendar_single_rfp(rfp_id):
+    """Export a single RFP deadline as ICS calendar."""
+    ics_content = export_single_rfp(rfp_id)
+
+    if not ics_content:
+        flash('RFP not found or has no due date', 'error')
+        return redirect(url_for('rfps_list'))
+
+    rfp = db.get_rfp(rfp_id)
+    filename = f"rfp_{rfp_id}.ics"
+
+    return Response(
+        ics_content,
+        mimetype='text/calendar',
         headers={'Content-Disposition': f'attachment; filename={filename}'}
     )
 
