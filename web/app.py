@@ -21,6 +21,8 @@ from src.rfp_discovery import RFPDiscoveryEngine, manual_add_rfp
 from src.notifications import NotificationService, send_daily_digest, send_deadline_alerts
 from src.scheduler import get_scheduler, start_scheduler, run_discovery_now
 from src.calendar_export import export_rfp_deadlines, export_bid_deadlines, export_single_rfp
+from src.document_downloader import DocumentDownloader, download_rfp_documents
+from src.ai_scoring import AIRelevanceScorer, score_rfp as ai_score_rfp
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -1034,6 +1036,67 @@ def calendar_single_rfp(rfp_id):
         mimetype='text/calendar',
         headers={'Content-Disposition': f'attachment; filename={filename}'}
     )
+
+
+# ============== Document Download Routes ==============
+
+@app.route('/rfp/<int:rfp_id>/download_documents', methods=['POST'])
+def download_rfp_docs(rfp_id):
+    """Download documents for an RFP."""
+    try:
+        result = download_rfp_documents(rfp_id)
+        if result.get('skipped'):
+            flash('Documents already downloaded', 'info')
+        elif result.get('downloaded', 0) > 0:
+            flash(f'Downloaded {result["downloaded"]} documents', 'success')
+        else:
+            flash('No documents found to download', 'warning')
+    except Exception as e:
+        flash(f'Error downloading documents: {str(e)}', 'error')
+
+    return redirect(url_for('rfp_detail', rfp_id=rfp_id))
+
+
+@app.route('/api/rfp/<int:rfp_id>/documents')
+def api_rfp_documents(rfp_id):
+    """API endpoint to get downloaded documents for an RFP."""
+    downloader = DocumentDownloader()
+    documents = downloader.get_rfp_documents(rfp_id)
+    return jsonify(documents)
+
+
+# ============== AI Scoring Routes ==============
+
+@app.route('/api/rfp/<int:rfp_id>/ai_score', methods=['POST'])
+def api_rescore_rfp(rfp_id):
+    """Rescore an RFP using AI."""
+    rfp = db.get_rfp(rfp_id)
+    if not rfp:
+        return jsonify({'error': 'RFP not found'}), 404
+
+    try:
+        result = ai_score_rfp(rfp['title'], rfp.get('description'))
+
+        # Update database
+        db.update_rfp(rfp_id,
+                     relevance_score=result['final_score'],
+                     is_relevant=1 if result['is_relevant'] else 0,
+                     category=result.get('category'))
+
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/rfps/rescore_all', methods=['POST'])
+def api_rescore_all_rfps():
+    """Rescore all RFPs using AI."""
+    try:
+        scorer = AIRelevanceScorer()
+        stats = scorer.rescore_all_rfps()
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # ============== Initialization ==============
