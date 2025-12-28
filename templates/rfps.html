@@ -9,6 +9,9 @@
         <p class="text-muted">IT/Consulting RFPs from Florida government agencies</p>
     </div>
     <div class="col-md-6 text-end">
+        <a href="{{ url_for('export_rfps_csv', status=status_filter or 'open', relevant='true' if relevant_only else 'false', category=category_filter or '', rfp_type=rfp_type or '', quick='true' if quick_only else 'false', search=search_query or '') }}" class="btn btn-outline-success me-2">
+            <i class="bi bi-download"></i> Export CSV
+        </a>
         <a href="{{ url_for('rfp_discover_page') }}" class="btn btn-primary">
             <i class="bi bi-search"></i> Discover RFPs
         </a>
@@ -51,22 +54,68 @@
     </div>
 </div>
 
+<!-- Search Bar -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-center">
+            <div class="col-md-8">
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" name="search" class="form-control form-control-lg" placeholder="Search RFPs by title, agency, or description..." value="{{ search_query }}">
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" name="quick" value="true" id="quickCheck" {{ 'checked' if quick_only }}>
+                    <label class="form-check-label" for="quickCheck">
+                        <i class="bi bi-lightning-fill text-warning"></i> Quick Response Only
+                    </label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="bi bi-search"></i> Search
+                </button>
+            </div>
+            <!-- Preserve other filter values -->
+            <input type="hidden" name="status" value="{{ status_filter or 'open' }}">
+            <input type="hidden" name="relevant" value="{{ 'true' if relevant_only else 'false' }}">
+            {% if category_filter %}<input type="hidden" name="category" value="{{ category_filter }}">{% endif %}
+            {% if rfp_type %}<input type="hidden" name="rfp_type" value="{{ rfp_type }}">{% endif %}
+        </form>
+    </div>
+</div>
+
 <!-- Filters -->
 <div class="card mb-4">
     <div class="card-body">
         <form method="get" class="row g-3 align-items-end">
-            <div class="col-md-3">
+            <!-- Preserve search query -->
+            {% if search_query %}<input type="hidden" name="search" value="{{ search_query }}">{% endif %}
+            <div class="col-6 col-md-2">
                 <label class="form-label">Status</label>
-                <select name="status" class="form-select">
+                <select name="status" class="form-select form-select-sm">
                     <option value="open" {{ 'selected' if status_filter == 'open' }}>Open</option>
                     <option value="all" {{ 'selected' if not status_filter }}>All</option>
                     <option value="closed" {{ 'selected' if status_filter == 'closed' }}>Closed</option>
                     <option value="awarded" {{ 'selected' if status_filter == 'awarded' }}>Awarded</option>
                 </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-6 col-md-2">
+                <label class="form-label">RFP Type</label>
+                <select name="rfp_type" class="form-select form-select-sm">
+                    <option value="">All Types</option>
+                    <option value="RFQ" {{ 'selected' if rfp_type == 'RFQ' }}>RFQ (Quote)</option>
+                    <option value="RFP" {{ 'selected' if rfp_type == 'RFP' }}>RFP (Proposal)</option>
+                    <option value="ITB" {{ 'selected' if rfp_type == 'ITB' }}>ITB (Bid)</option>
+                    <option value="ITN" {{ 'selected' if rfp_type == 'ITN' }}>ITN (Negotiation)</option>
+                    <option value="Quote" {{ 'selected' if rfp_type == 'Quote' }}>Quote</option>
+                    <option value="Emergency" {{ 'selected' if rfp_type == 'Emergency' }}>Emergency</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
                 <label class="form-label">Category</label>
-                <select name="category" class="form-select">
+                <select name="category" class="form-select form-select-sm">
                     <option value="">All Categories</option>
                     <option value="it_consulting" {{ 'selected' if category_filter == 'it_consulting' }}>IT Consulting</option>
                     <option value="software" {{ 'selected' if category_filter == 'software' }}>Software</option>
@@ -75,17 +124,29 @@
                     <option value="data" {{ 'selected' if category_filter == 'data' }}>Data & Analytics</option>
                 </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-6 col-md-2">
+                <label class="form-label"><i class="bi bi-alarm"></i> Urgency</label>
+                <select name="urgency" class="form-select form-select-sm">
+                    <option value="">All</option>
+                    <option value="today" {{ 'selected' if urgency_filter == 'today' }}>Due Today</option>
+                    <option value="urgent" {{ 'selected' if urgency_filter == 'urgent' }}>Due in 1-2 Days</option>
+                    <option value="soon" {{ 'selected' if urgency_filter == 'soon' }}>Due in 7 Days</option>
+                    <option value="upcoming" {{ 'selected' if urgency_filter == 'upcoming' }}>Due in 14 Days</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" name="relevant" value="true" id="relevantCheck" {{ 'checked' if relevant_only }}>
-                    <label class="form-check-label" for="relevantCheck">
-                        IT/Consulting Only
-                    </label>
+                    <label class="form-check-label" for="relevantCheck">IT/Consulting</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="quick" value="true" id="quickFilterCheck" {{ 'checked' if quick_only }}>
+                    <label class="form-check-label" for="quickFilterCheck"><i class="bi bi-lightning-fill text-warning"></i> Quick</label>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-6 col-md-2">
                 <button type="submit" class="btn btn-outline-primary w-100">
-                    <i class="bi bi-filter"></i> Apply Filters
+                    <i class="bi bi-filter"></i> Apply
                 </button>
             </div>
         </form>
@@ -125,6 +186,11 @@
                             <a href="{{ url_for('rfp_detail', rfp_id=rfp.id) }}">
                                 {{ rfp.title[:60] }}{% if rfp.title|length > 60 %}...{% endif %}
                             </a>
+                            {% if rfp.is_quick_response %}
+                            <span class="badge bg-warning text-dark ms-1" title="Quick Response - {{ rfp.response_deadline_hours or '24-72' }}h turnaround">
+                                <i class="bi bi-lightning-fill"></i> Quick
+                            </span>
+                            {% endif %}
                             {% if rfp.is_relevant %}
                             <i class="bi bi-star-fill text-warning ms-1" title="Relevant to your services"></i>
                             {% endif %}
@@ -151,9 +217,29 @@
                         </td>
                         <td>
                             {% if rfp.due_date %}
-                            <span class="{{ 'text-danger fw-bold' if rfp.due_date[:10] <= (now|string)[:10] else '' }}">
-                                {{ rfp.due_date[:10] }}
-                            </span>
+                                {% if rfp.days_until_due is not none %}
+                                    {% if rfp.days_until_due < 0 %}
+                                    <span class="text-muted"><s>{{ rfp.due_date[:10] }}</s></span>
+                                    <span class="badge bg-secondary ms-1">Expired</span>
+                                    {% elif rfp.days_until_due == 0 %}
+                                    <span class="text-danger fw-bold">{{ rfp.due_date[:10] }}</span>
+                                    <span class="badge bg-danger ms-1 animate-pulse"><i class="bi bi-exclamation-triangle-fill"></i> TODAY!</span>
+                                    {% elif rfp.days_until_due <= 2 %}
+                                    <span class="text-danger fw-bold">{{ rfp.due_date[:10] }}</span>
+                                    <span class="badge bg-danger ms-1"><i class="bi bi-alarm-fill"></i> {{ rfp.days_until_due }}d</span>
+                                    {% elif rfp.days_until_due <= 7 %}
+                                    <span class="text-warning fw-bold">{{ rfp.due_date[:10] }}</span>
+                                    <span class="badge bg-warning text-dark ms-1"><i class="bi bi-clock-fill"></i> {{ rfp.days_until_due }}d</span>
+                                    {% elif rfp.days_until_due <= 14 %}
+                                    <span class="text-info">{{ rfp.due_date[:10] }}</span>
+                                    <span class="badge bg-info text-dark ms-1">{{ rfp.days_until_due }}d</span>
+                                    {% else %}
+                                    <span>{{ rfp.due_date[:10] }}</span>
+                                    <small class="text-muted ms-1">({{ rfp.days_until_due }}d)</small>
+                                    {% endif %}
+                                {% else %}
+                                <span>{{ rfp.due_date[:10] }}</span>
+                                {% endif %}
                             {% else %}
                             <span class="text-muted">TBD</span>
                             {% endif %}

@@ -7,7 +7,9 @@ import os
 import sys
 import logging
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, Response
+import csv
+import io
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -341,19 +343,60 @@ def rfps_list():
     status_filter = request.args.get('status', 'open')
     relevant_only = request.args.get('relevant', 'true').lower() == 'true'
     category_filter = request.args.get('category')
+    quick_only = request.args.get('quick', 'false').lower() == 'true'
+    rfp_type = request.args.get('rfp_type')
+    search_query = request.args.get('search', '').strip()
+    urgency_filter = request.args.get('urgency', '').strip()
 
     if status_filter == 'all':
         status_filter = None
+    if rfp_type == '':
+        rfp_type = None
 
-    rfps = db.get_all_rfps(status=status_filter, relevant_only=relevant_only, category=category_filter)
+    rfps = db.get_all_rfps(
+        status=status_filter,
+        relevant_only=relevant_only,
+        category=category_filter,
+        quick_only=quick_only,
+        rfp_type=rfp_type,
+        search=search_query if search_query else None
+    )
     rfp_stats = db.get_rfp_stats()
+
+    # Add days until due for urgency calculation
+    today = datetime.now().date()
+    for rfp in rfps:
+        if rfp.get('due_date'):
+            try:
+                due = datetime.strptime(rfp['due_date'][:10], '%Y-%m-%d').date()
+                rfp['days_until_due'] = (due - today).days
+            except (ValueError, TypeError):
+                rfp['days_until_due'] = None
+        else:
+            rfp['days_until_due'] = None
+
+    # Apply urgency filter
+    if urgency_filter:
+        if urgency_filter == 'today':
+            rfps = [r for r in rfps if r.get('days_until_due') == 0]
+        elif urgency_filter == 'urgent':
+            rfps = [r for r in rfps if r.get('days_until_due') is not None and 0 <= r['days_until_due'] <= 2]
+        elif urgency_filter == 'soon':
+            rfps = [r for r in rfps if r.get('days_until_due') is not None and 0 <= r['days_until_due'] <= 7]
+        elif urgency_filter == 'upcoming':
+            rfps = [r for r in rfps if r.get('days_until_due') is not None and 0 <= r['days_until_due'] <= 14]
 
     return render_template('rfps.html',
                          rfps=rfps,
                          stats=rfp_stats,
                          status_filter=status_filter,
                          relevant_only=relevant_only,
-                         category_filter=category_filter)
+                         category_filter=category_filter,
+                         quick_only=quick_only,
+                         rfp_type=rfp_type,
+                         search_query=search_query,
+                         urgency_filter=urgency_filter,
+                         today=today.isoformat())
 
 
 @app.route('/rfp/<int:rfp_id>')
@@ -471,6 +514,75 @@ def api_rfp_stats():
     """API endpoint for RFP stats."""
     stats = db.get_rfp_stats()
     return jsonify(stats)
+
+
+@app.route('/rfps/export')
+def export_rfps_csv():
+    """Export RFPs to CSV file."""
+    status_filter = request.args.get('status', 'open')
+    relevant_only = request.args.get('relevant', 'true').lower() == 'true'
+    category_filter = request.args.get('category')
+    quick_only = request.args.get('quick', 'false').lower() == 'true'
+    rfp_type = request.args.get('rfp_type')
+    search_query = request.args.get('search', '').strip()
+
+    if status_filter == 'all':
+        status_filter = None
+    if rfp_type == '':
+        rfp_type = None
+
+    rfps = db.get_all_rfps(
+        status=status_filter,
+        relevant_only=relevant_only,
+        category=category_filter,
+        quick_only=quick_only,
+        rfp_type=rfp_type,
+        search=search_query if search_query else None
+    )
+
+    # Create CSV in memory
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Write header
+    writer.writerow([
+        'ID', 'Title', 'Agency', 'Agency Type', 'RFP Type', 'Category',
+        'Due Date', 'Status', 'Relevance Score', 'Is Relevant',
+        'Is Quick Response', 'Response Deadline (Hours)', 'Source Portal',
+        'Source URL', 'Description', 'Created Date'
+    ])
+
+    # Write data rows
+    for rfp in rfps:
+        writer.writerow([
+            rfp.get('id', ''),
+            rfp.get('title', ''),
+            rfp.get('entity_name', ''),
+            rfp.get('entity_type', ''),
+            rfp.get('rfp_type', 'RFP'),
+            rfp.get('category', ''),
+            rfp.get('due_date', ''),
+            rfp.get('status', ''),
+            rfp.get('relevance_score', 0),
+            'Yes' if rfp.get('is_relevant') else 'No',
+            'Yes' if rfp.get('is_quick_response') else 'No',
+            rfp.get('response_deadline_hours', ''),
+            rfp.get('source_portal', ''),
+            rfp.get('source_url', ''),
+            rfp.get('description', ''),
+            rfp.get('created_at', '')
+        ])
+
+    # Create response
+    output.seek(0)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f'rfps_export_{timestamp}.csv'
+
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename={filename}'}
+    )
 
 
 # ============== Initialization ==============

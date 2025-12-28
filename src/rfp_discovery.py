@@ -96,6 +96,279 @@ class RFPDiscoveryEngine:
 
         return None
 
+    def scrape_mfmp(self, max_results: int = 100) -> List[Dict]:
+        """
+        Scrape MyFloridaMarketPlace (MFMP) - the official Florida state procurement system.
+        This is where state agencies post their solicitations.
+        """
+        results = []
+
+        logger.info("Scraping MyFloridaMarketPlace (MFMP)...")
+
+        # MFMP Advertisement Search
+        mfmp_urls = [
+            ('MFMP Advertisements', 'https://vendor.myfloridamarketplace.com/search/advertisements'),
+            ('MFMP Solicitations', 'https://vendor.myfloridamarketplace.com/search/solicitations'),
+            ('MFMP State Term Contracts', 'https://www.dms.myflorida.com/business_operations/state_purchasing/state_contracts_and_agreements'),
+            ('DMS Procurement', 'https://www.dms.myflorida.com/business_operations/state_purchasing/vendor_resources/current_solicitations'),
+        ]
+
+        for source_name, url in mfmp_urls:
+            try:
+                response = requests.get(url, headers=HEADERS, timeout=30)
+
+                if response.status_code == 200:
+                    soup = BeautifulSoup(response.text, 'html.parser')
+
+                    # Try multiple selectors for MFMP's various page formats
+                    items = soup.find_all('div', class_='advertisement') or \
+                           soup.find_all('tr', class_='solicitation-row') or \
+                           soup.find_all('div', class_='solicitation-item') or \
+                           soup.find_all('table', class_='solicitations')
+
+                    if items:
+                        for item in items[:max_results]:
+                            rfp_data = self._parse_mfmp_item(item, url)
+                            if rfp_data:
+                                results.append(rfp_data)
+                    else:
+                        # Try parsing as a table
+                        tables = soup.find_all('table')
+                        for table in tables:
+                            rows = table.find_all('tr')[1:]  # Skip header
+                            for row in rows[:max_results]:
+                                rfp_data = self._parse_mfmp_table_row(row, url)
+                                if rfp_data:
+                                    results.append(rfp_data)
+
+                        # Also try finding links with solicitation-related text
+                        links = soup.find_all('a', href=True)
+                        for link in links:
+                            href = link.get('href', '')
+                            text = link.get_text(strip=True)
+                            if ('solicitation' in href.lower() or 'bid' in href.lower() or
+                                'rfp' in href.lower() or 'itb' in href.lower() or 'itn' in href.lower()):
+                                if text and len(text) > 15:
+                                    is_relevant, score, category = self.calculate_relevance(text)
+                                    full_url = href if href.startswith('http') else urljoin(url, href)
+                                    results.append({
+                                        'title': text,
+                                        'description': '',
+                                        'solicitation_number': None,
+                                        'rfp_type': 'RFP',
+                                        'category': category,
+                                        'agency_name': 'State of Florida',
+                                        'posted_date': datetime.now().isoformat(),
+                                        'due_date': None,
+                                        'source_url': full_url,
+                                        'source_portal': 'mfmp',
+                                        'is_relevant': is_relevant,
+                                        'relevance_score': score
+                                    })
+
+            except Exception as e:
+                logger.debug(f"Error scraping {source_name}: {e}")
+
+        # Also scrape individual state agency procurement pages
+        state_agency_urls = [
+            ('FL Dept of Transportation', 'https://www.fdot.gov/contracts/procurement.shtm'),
+            ('FL Dept of Education', 'https://www.fldoe.org/finance/contracts-grants-procurement/'),
+            ('FL Dept of Health', 'https://www.floridahealth.gov/about/administrative-functions/purchasing/index.html'),
+            ('FL Dept of Children & Families', 'https://www.myflfamilies.com/general-information/procurement-contracts'),
+            ('FL Dept of Environmental Protection', 'https://floridadep.gov/admin/business-services/content/bids-awards'),
+            ('FL Dept of Revenue', 'https://floridarevenue.com/opengovfl/pages/publicdocuments.aspx'),
+            ('FL Dept of Corrections', 'http://www.dc.state.fl.us/ci/bids.html'),
+            ('FL Dept of Agriculture', 'https://www.fdacs.gov/Business-Services/Procurement'),
+            ('FL Fish & Wildlife', 'https://myfwc.com/about/inside-fwc/business/procurement/'),
+            ('FL Lottery', 'https://www.flalottery.com/procurement'),
+            ('FL Highway Patrol', 'https://www.flhsmv.gov/resources/procurement/'),
+            ('FL Agency for Healthcare Admin', 'https://ahca.myflorida.com/procurements/'),
+            ('FL Housing Finance Corp', 'https://www.floridahousing.org/about-florida-housing/procurement'),
+            ('Enterprise Florida', 'https://www.enterpriseflorida.com/about-us/procurement/'),
+        ]
+
+        for agency_name, url in state_agency_urls:
+            try:
+                response = requests.get(url, headers=HEADERS, timeout=30)
+                if response.status_code == 200:
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    rfps = self._parse_state_agency_page(soup, agency_name, url)
+                    results.extend(rfps)
+            except Exception as e:
+                logger.debug(f"Error scraping {agency_name}: {e}")
+
+        return results
+
+    def _parse_mfmp_item(self, item, base_url: str) -> Optional[Dict]:
+        """Parse an MFMP advertisement/solicitation item."""
+        try:
+            title_elem = item.find('a') or item.find('h3') or item.find('span', class_='title')
+            if not title_elem:
+                return None
+
+            title = title_elem.get_text(strip=True)
+            if not title or len(title) < 10:
+                return None
+
+            url = base_url
+            link = item.find('a')
+            if link and link.get('href'):
+                href = link.get('href')
+                url = href if href.startswith('http') else urljoin(base_url, href)
+
+            # Try to extract solicitation number
+            sol_num = None
+            sol_elem = item.find('span', class_='solicitation-number') or item.find('td', class_='number')
+            if sol_elem:
+                sol_num = sol_elem.get_text(strip=True)
+
+            # Try to get due date
+            due_date = None
+            date_elem = item.find('span', class_='due-date') or item.find('td', class_='closing')
+            if date_elem:
+                due_date = date_elem.get_text(strip=True)
+
+            # Get agency
+            agency = 'State of Florida'
+            agency_elem = item.find('span', class_='agency') or item.find('td', class_='agency')
+            if agency_elem:
+                agency = agency_elem.get_text(strip=True)
+
+            is_relevant, score, category = self.calculate_relevance(title)
+
+            return {
+                'title': title,
+                'description': '',
+                'solicitation_number': sol_num,
+                'rfp_type': 'RFP',
+                'category': category,
+                'agency_name': agency,
+                'posted_date': datetime.now().isoformat(),
+                'due_date': due_date,
+                'source_url': url,
+                'source_portal': 'mfmp',
+                'is_relevant': is_relevant,
+                'relevance_score': score
+            }
+        except Exception as e:
+            logger.debug(f"Error parsing MFMP item: {e}")
+            return None
+
+    def _parse_mfmp_table_row(self, row, base_url: str) -> Optional[Dict]:
+        """Parse an MFMP table row."""
+        try:
+            cells = row.find_all('td')
+            if len(cells) < 2:
+                return None
+
+            title_cell = cells[0]
+            link = title_cell.find('a')
+            title = link.get_text(strip=True) if link else title_cell.get_text(strip=True)
+
+            if not title or len(title) < 10:
+                return None
+
+            url = base_url
+            if link and link.get('href'):
+                href = link.get('href')
+                url = href if href.startswith('http') else urljoin(base_url, href)
+
+            sol_num = cells[1].get_text(strip=True) if len(cells) > 1 else None
+            due_date = cells[2].get_text(strip=True) if len(cells) > 2 else None
+            agency = cells[3].get_text(strip=True) if len(cells) > 3 else 'State of Florida'
+
+            is_relevant, score, category = self.calculate_relevance(title)
+
+            return {
+                'title': title,
+                'description': '',
+                'solicitation_number': sol_num,
+                'rfp_type': 'RFP',
+                'category': category,
+                'agency_name': agency,
+                'posted_date': datetime.now().isoformat(),
+                'due_date': due_date,
+                'source_url': url,
+                'source_portal': 'mfmp',
+                'is_relevant': is_relevant,
+                'relevance_score': score
+            }
+        except Exception as e:
+            logger.debug(f"Error parsing MFMP table row: {e}")
+            return None
+
+    def _parse_state_agency_page(self, soup: BeautifulSoup, agency_name: str, base_url: str) -> List[Dict]:
+        """Parse a state agency procurement page."""
+        results = []
+
+        # Look for links to solicitations/bids
+        links = soup.find_all('a', href=True)
+
+        for link in links:
+            href = link.get('href', '')
+            text = link.get_text(strip=True)
+
+            # Filter for procurement-related links
+            keywords = ['rfp', 'rfq', 'itb', 'itn', 'solicitation', 'bid', 'procurement', 'contract']
+            if any(kw in href.lower() or kw in text.lower() for kw in keywords):
+                if text and len(text) > 15 and len(text) < 300:
+                    # Skip navigation/menu links
+                    if any(skip in text.lower() for skip in ['click here', 'read more', 'learn more', 'view all']):
+                        continue
+
+                    is_relevant, score, category = self.calculate_relevance(text)
+                    full_url = href if href.startswith('http') else urljoin(base_url, href)
+
+                    results.append({
+                        'title': text,
+                        'description': '',
+                        'solicitation_number': None,
+                        'rfp_type': 'RFP',
+                        'category': category,
+                        'agency_name': agency_name,
+                        'posted_date': datetime.now().isoformat(),
+                        'due_date': None,
+                        'source_url': full_url,
+                        'source_portal': 'mfmp',
+                        'is_relevant': is_relevant,
+                        'relevance_score': score
+                    })
+
+        # Also look for table rows
+        tables = soup.find_all('table')
+        for table in tables:
+            rows = table.find_all('tr')[1:]  # Skip header
+            for row in rows[:30]:
+                cells = row.find_all('td')
+                if len(cells) >= 1:
+                    title_cell = cells[0]
+                    link = title_cell.find('a')
+                    title = link.get_text(strip=True) if link else title_cell.get_text(strip=True)
+
+                    if title and len(title) > 15:
+                        is_relevant, score, category = self.calculate_relevance(title)
+                        url = base_url
+                        if link and link.get('href'):
+                            href = link.get('href')
+                            url = href if href.startswith('http') else urljoin(base_url, href)
+
+                        results.append({
+                            'title': title,
+                            'description': '',
+                            'solicitation_number': None,
+                            'rfp_type': 'RFP',
+                            'category': category,
+                            'agency_name': agency_name,
+                            'posted_date': datetime.now().isoformat(),
+                            'due_date': None,
+                            'source_url': url,
+                            'source_portal': 'mfmp',
+                            'is_relevant': is_relevant,
+                            'relevance_score': score
+                        })
+
+        return results[:30]  # Limit per agency
+
     def scrape_vendorlink(self, max_pages: int = 5) -> List[Dict]:
         """
         Scrape VendorLink Florida (myflorida.com) for solicitations.
@@ -194,6 +467,20 @@ class RFPDiscoveryEngine:
             ('Hillsborough County', 'https://hillsboroughcounty.bonfirehub.com/opportunities'),
             ('Palm Beach County', 'https://pbcgov.bonfirehub.com/opportunities'),
             ('Broward County', 'https://broward.bonfirehub.com/opportunities'),
+            ('Miami-Dade County', 'https://miamidade.bonfirehub.com/opportunities'),
+            ('Duval County', 'https://duval.bonfirehub.com/opportunities'),
+            ('Pinellas County', 'https://pinellas.bonfirehub.com/opportunities'),
+            ('Pasco County', 'https://pasco.bonfirehub.com/opportunities'),
+            ('Manatee County', 'https://manatee.bonfirehub.com/opportunities'),
+            ('St. Lucie County', 'https://stlucie.bonfirehub.com/opportunities'),
+            ('Martin County', 'https://martin.bonfirehub.com/opportunities'),
+            ('Indian River County', 'https://indianriver.bonfirehub.com/opportunities'),
+            ('Osceola County', 'https://osceola.bonfirehub.com/opportunities'),
+            ('Lake County', 'https://lakecountyfl.bonfirehub.com/opportunities'),
+            ('City of Orlando', 'https://cityoforlando.bonfirehub.com/opportunities'),
+            ('City of Tampa', 'https://tampa.bonfirehub.com/opportunities'),
+            ('City of Jacksonville', 'https://jacksonville.bonfirehub.com/opportunities'),
+            ('City of Miami', 'https://miami.bonfirehub.com/opportunities'),
         ]
 
         for agency_name, url in bonfire_agencies:
@@ -216,6 +503,587 @@ class RFPDiscoveryEngine:
 
         return results
 
+    def scrape_bidnet(self, max_results: int = 100) -> List[Dict]:
+        """
+        Scrape BidNet Direct for Florida government bids.
+        BidNet is one of the largest procurement platforms in the US.
+        """
+        results = []
+
+        logger.info("Scraping BidNet Direct for Florida bids...")
+
+        # BidNet search URL for Florida
+        search_url = 'https://www.bidnetdirect.com/florida/bids'
+
+        try:
+            response = requests.get(search_url, headers=HEADERS, timeout=30)
+
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+
+                # BidNet uses various card/list formats
+                bid_items = soup.find_all('div', class_='bid-item') or \
+                           soup.find_all('div', class_='search-result') or \
+                           soup.find_all('tr', class_='bid-row') or \
+                           soup.find_all('article', class_='bid')
+
+                for item in bid_items[:max_results]:
+                    rfp_data = self._parse_bidnet_item(item, search_url)
+                    if rfp_data:
+                        results.append(rfp_data)
+
+                # Also try to find bids in a table format
+                if not results:
+                    tables = soup.find_all('table')
+                    for table in tables:
+                        rows = table.find_all('tr')[1:]  # Skip header
+                        for row in rows[:max_results]:
+                            rfp_data = self._parse_bidnet_table_row(row, search_url)
+                            if rfp_data:
+                                results.append(rfp_data)
+
+        except Exception as e:
+            logger.error(f"Error scraping BidNet: {e}")
+
+        # Also scrape BidNet agency-specific pages
+        bidnet_agencies = [
+            ('Alachua County', 'https://www.bidnetdirect.com/florida/alachuacounty'),
+            ('Bay County', 'https://www.bidnetdirect.com/florida/baycounty'),
+            ('Charlotte County', 'https://www.bidnetdirect.com/florida/charlottecounty'),
+            ('Citrus County', 'https://www.bidnetdirect.com/florida/citruscounty'),
+            ('Clay County', 'https://www.bidnetdirect.com/florida/claycounty'),
+            ('Flagler County', 'https://www.bidnetdirect.com/florida/flaglercounty'),
+            ('Hernando County', 'https://www.bidnetdirect.com/florida/hernandocounty'),
+            ('Highlands County', 'https://www.bidnetdirect.com/florida/highlandscounty'),
+            ('Monroe County', 'https://www.bidnetdirect.com/florida/monroecounty'),
+            ('Nassau County', 'https://www.bidnetdirect.com/florida/nassaucounty'),
+            ('Okaloosa County', 'https://www.bidnetdirect.com/florida/okaloosacounty'),
+            ('Santa Rosa County', 'https://www.bidnetdirect.com/florida/santarosacounty'),
+            ('St. Johns County', 'https://www.bidnetdirect.com/florida/stjohnscounty'),
+            ('Sumter County', 'https://www.bidnetdirect.com/florida/sumtercounty'),
+            ('Walton County', 'https://www.bidnetdirect.com/florida/waltoncounty'),
+        ]
+
+        for agency_name, url in bidnet_agencies:
+            try:
+                response = requests.get(url, headers=HEADERS, timeout=30)
+                if response.status_code == 200:
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    bid_items = soup.find_all('div', class_='bid-item') or \
+                               soup.find_all('div', class_='search-result') or \
+                               soup.find_all('a', href=lambda x: x and 'bid' in x.lower())
+
+                    for item in bid_items[:20]:
+                        rfp_data = self._parse_bidnet_item(item, url, agency_name)
+                        if rfp_data:
+                            results.append(rfp_data)
+            except Exception as e:
+                logger.debug(f"Error scraping BidNet for {agency_name}: {e}")
+
+        return results
+
+    def _parse_bidnet_item(self, item, base_url: str, agency_name: str = None) -> Optional[Dict]:
+        """Parse a BidNet bid item."""
+        try:
+            # Try to find title
+            title_elem = item.find('h3') or item.find('h4') or item.find('a', class_='title') or item.find('a')
+            if not title_elem:
+                return None
+
+            title = title_elem.get_text(strip=True)
+            if not title or len(title) < 10:
+                return None
+
+            # Get URL
+            url = base_url
+            link = item.find('a')
+            if link and link.get('href'):
+                href = link.get('href')
+                if href.startswith('http'):
+                    url = href
+                else:
+                    url = urljoin(base_url, href)
+
+            # Try to get agency name from item if not provided
+            if not agency_name:
+                agency_elem = item.find('span', class_='agency') or item.find('div', class_='agency')
+                if agency_elem:
+                    agency_name = agency_elem.get_text(strip=True)
+
+            # Try to get due date
+            due_date = None
+            date_elem = item.find('span', class_='due-date') or item.find('div', class_='closing')
+            if date_elem:
+                due_date = date_elem.get_text(strip=True)
+
+            # Get description
+            description = ''
+            desc_elem = item.find('p') or item.find('div', class_='description')
+            if desc_elem:
+                description = desc_elem.get_text(strip=True)
+
+            is_relevant, score, category = self.calculate_relevance(title, description)
+
+            return {
+                'title': title,
+                'description': description,
+                'solicitation_number': None,
+                'rfp_type': 'RFP',
+                'category': category,
+                'agency_name': agency_name,
+                'posted_date': datetime.now().isoformat(),
+                'due_date': due_date,
+                'source_url': url,
+                'source_portal': 'bidnet',
+                'is_relevant': is_relevant,
+                'relevance_score': score
+            }
+        except Exception as e:
+            logger.debug(f"Error parsing BidNet item: {e}")
+            return None
+
+    def _parse_bidnet_table_row(self, row, base_url: str) -> Optional[Dict]:
+        """Parse a BidNet table row."""
+        try:
+            cells = row.find_all('td')
+            if len(cells) < 2:
+                return None
+
+            # First cell usually has title/link
+            title_cell = cells[0]
+            link = title_cell.find('a')
+            if not link:
+                return None
+
+            title = link.get_text(strip=True)
+            if not title or len(title) < 10:
+                return None
+
+            url = base_url
+            if link.get('href'):
+                href = link.get('href')
+                if href.startswith('http'):
+                    url = href
+                else:
+                    url = urljoin(base_url, href)
+
+            # Try to get agency and due date from other cells
+            agency_name = cells[1].get_text(strip=True) if len(cells) > 1 else None
+            due_date = cells[2].get_text(strip=True) if len(cells) > 2 else None
+
+            is_relevant, score, category = self.calculate_relevance(title)
+
+            return {
+                'title': title,
+                'description': '',
+                'solicitation_number': None,
+                'rfp_type': 'RFP',
+                'category': category,
+                'agency_name': agency_name,
+                'posted_date': datetime.now().isoformat(),
+                'due_date': due_date,
+                'source_url': url,
+                'source_portal': 'bidnet',
+                'is_relevant': is_relevant,
+                'relevance_score': score
+            }
+        except Exception as e:
+            logger.debug(f"Error parsing BidNet table row: {e}")
+            return None
+
+    def scrape_school_districts(self, max_results: int = 50) -> List[Dict]:
+        """
+        Scrape Florida school district procurement portals.
+        School districts have separate procurement from county governments.
+        """
+        results = []
+
+        logger.info("Scraping Florida school district procurement sites...")
+
+        # Florida school district procurement pages
+        school_districts = [
+            # Large districts
+            ('Miami-Dade County Public Schools', 'https://procurement.dadeschools.net/'),
+            ('Broward County Public Schools', 'https://www.browardschools.com/Page/32196'),
+            ('Palm Beach County School District', 'https://www.palmbeachschools.org/departments/purchasing'),
+            ('Hillsborough County Public Schools', 'https://www.hillsboroughschools.org/domain/150'),
+            ('Orange County Public Schools', 'https://www.ocps.net/departments/procurement_services'),
+            ('Duval County Public Schools', 'https://dcps.duvalschools.org/Page/9897'),
+            ('Pinellas County Schools', 'https://www.pcsb.org/domain/124'),
+            ('Polk County Public Schools', 'https://www.polk-fl.net/districtinfo/departments/purchasing/'),
+            ('Lee County School District', 'https://www.leeschools.net/our_district/departments/purchasing'),
+            ('Volusia County Schools', 'https://www.vcsedu.org/departments/purchasing-services'),
+            # Medium districts
+            ('Brevard Public Schools', 'https://www.brevardschools.org/domain/56'),
+            ('Seminole County Public Schools', 'https://www.scps.k12.fl.us/departments/finance/purchasing'),
+            ('Pasco County Schools', 'https://www.pasco.k12.fl.us/purchasing'),
+            ('Sarasota County Schools', 'https://www.sarasotacountyschools.net/Page/2419'),
+            ('Manatee County School District', 'https://www.manateeschools.net/domain/80'),
+            ('Lake County Schools', 'https://www.lake.k12.fl.us/Page/1191'),
+            ('Osceola County School District', 'https://www.osceolaschools.net/Page/2148'),
+            ('Marion County Public Schools', 'https://www.marionschools.net/domain/75'),
+            ('Collier County Public Schools', 'https://www.collierschools.com/domain/76'),
+            ('Escambia County School District', 'https://ecsd-fl.schoolloop.com/purchasing'),
+            ('St. Johns County School District', 'https://www.stjohns.k12.fl.us/purchasing/'),
+            ('Alachua County Public Schools', 'https://www.sbac.edu/Page/1187'),
+            ('Leon County Schools', 'https://www.leonschools.net/Page/2080'),
+            ('Clay County District Schools', 'https://www.oneclay.net/Page/1392'),
+            ('St. Lucie Public Schools', 'https://www.stlucie.k12.fl.us/departments/purchasing'),
+            ('Okaloosa County School District', 'https://www.okaloosaschools.com/site/Default.aspx?PageID=1091'),
+            ('Santa Rosa County District Schools', 'https://www.santarosa.k12.fl.us/departments/purchasing/'),
+            ('Charlotte County Public Schools', 'https://www.yourcharlotteschools.net/Page/720'),
+            ('Indian River County School District', 'https://www.indianriverschools.org/departments/purchasing'),
+            ('Martin County School District', 'https://www.martinschools.org/domain/92'),
+            # Smaller districts
+            ('Hernando County Schools', 'https://www.hernandoschools.org/domain/69'),
+            ('Citrus County Schools', 'https://www.citrusschools.org/departments/purchasing'),
+            ('Sumter County Schools', 'https://www.sumter.k12.fl.us/domain/75'),
+            ('Flagler County Schools', 'https://flaglerschools.com/departments/purchasing'),
+            ('Nassau County School District', 'https://www.nassau.k12.fl.us/Page/320'),
+            ('Putnam County School District', 'https://www.putnamschools.org/Page/1104'),
+            ('Bay District Schools', 'https://www.bay.k12.fl.us/departments/purchasing'),
+            ('Walton County School District', 'https://www.walton.k12.fl.us/Page/1129'),
+            ('Monroe County School District', 'https://www.keysschools.com/domain/75'),
+            ('Highlands County School District', 'https://www.highlands.k12.fl.us/Page/1149'),
+        ]
+
+        for district_name, url in school_districts:
+            try:
+                response = requests.get(url, headers=HEADERS, timeout=30)
+                if response.status_code == 200:
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    rfps = self._parse_school_district_page(soup, district_name, url)
+                    results.extend(rfps)
+            except Exception as e:
+                logger.debug(f"Error scraping {district_name}: {e}")
+
+        return results
+
+    def _parse_school_district_page(self, soup: BeautifulSoup, district_name: str, base_url: str) -> List[Dict]:
+        """Parse a school district procurement page."""
+        results = []
+
+        # School districts often use various CMS systems, so try multiple approaches
+
+        # Look for bid/RFP links
+        links = soup.find_all('a', href=True)
+
+        for link in links:
+            href = link.get('href', '')
+            text = link.get_text(strip=True)
+
+            # Filter for procurement-related links
+            keywords = ['rfp', 'rfq', 'itb', 'itn', 'bid', 'solicitation', 'procurement', 'proposal', 'quote']
+            if any(kw in href.lower() or kw in text.lower() for kw in keywords):
+                if text and len(text) > 10 and len(text) < 300:
+                    # Skip navigation links
+                    skip_words = ['click here', 'read more', 'learn more', 'view all', 'back to', 'home', 'menu']
+                    if any(skip in text.lower() for skip in skip_words):
+                        continue
+
+                    is_relevant, score, category = self.calculate_relevance(text)
+                    full_url = href if href.startswith('http') else urljoin(base_url, href)
+
+                    results.append({
+                        'title': text,
+                        'description': '',
+                        'solicitation_number': None,
+                        'rfp_type': 'RFP',
+                        'category': category,
+                        'agency_name': district_name,
+                        'posted_date': datetime.now().isoformat(),
+                        'due_date': None,
+                        'source_url': full_url,
+                        'source_portal': 'school_district',
+                        'is_relevant': is_relevant,
+                        'relevance_score': score
+                    })
+
+        # Try to find tables with bids
+        tables = soup.find_all('table')
+        for table in tables:
+            rows = table.find_all('tr')[1:]  # Skip header
+            for row in rows[:30]:
+                cells = row.find_all('td')
+                if len(cells) >= 1:
+                    title_cell = cells[0]
+                    link = title_cell.find('a')
+                    title = link.get_text(strip=True) if link else title_cell.get_text(strip=True)
+
+                    if title and len(title) > 10:
+                        is_relevant, score, category = self.calculate_relevance(title)
+                        url = base_url
+                        if link and link.get('href'):
+                            href = link.get('href')
+                            url = href if href.startswith('http') else urljoin(base_url, href)
+
+                        results.append({
+                            'title': title,
+                            'description': '',
+                            'solicitation_number': None,
+                            'rfp_type': 'RFP',
+                            'category': category,
+                            'agency_name': district_name,
+                            'posted_date': datetime.now().isoformat(),
+                            'due_date': None,
+                            'source_url': url,
+                            'source_portal': 'school_district',
+                            'is_relevant': is_relevant,
+                            'relevance_score': score
+                        })
+
+        # Also look for list items that might be bids
+        list_items = soup.find_all('li')
+        for li in list_items:
+            link = li.find('a')
+            if link:
+                text = link.get_text(strip=True)
+                href = link.get('href', '')
+
+                keywords = ['rfp', 'rfq', 'itb', 'itn', 'bid', 'solicitation']
+                if any(kw in text.lower() or kw in href.lower() for kw in keywords):
+                    if len(text) > 10 and len(text) < 300:
+                        is_relevant, score, category = self.calculate_relevance(text)
+                        full_url = href if href.startswith('http') else urljoin(base_url, href)
+
+                        results.append({
+                            'title': text,
+                            'description': '',
+                            'solicitation_number': None,
+                            'rfp_type': 'RFP',
+                            'category': category,
+                            'agency_name': district_name,
+                            'posted_date': datetime.now().isoformat(),
+                            'due_date': None,
+                            'source_url': full_url,
+                            'source_portal': 'school_district',
+                            'is_relevant': is_relevant,
+                            'relevance_score': score
+                        })
+
+        # Look for divs with bid-related classes
+        bid_divs = soup.find_all('div', class_=lambda x: x and any(kw in x.lower() for kw in ['bid', 'rfp', 'solicitation']))
+        for div in bid_divs:
+            title_elem = div.find('h3') or div.find('h4') or div.find('a') or div.find('strong')
+            if title_elem:
+                title = title_elem.get_text(strip=True)
+                if title and len(title) > 10:
+                    is_relevant, score, category = self.calculate_relevance(title)
+                    url = base_url
+                    link = div.find('a')
+                    if link and link.get('href'):
+                        href = link.get('href')
+                        url = href if href.startswith('http') else urljoin(base_url, href)
+
+                    results.append({
+                        'title': title,
+                        'description': '',
+                        'solicitation_number': None,
+                        'rfp_type': 'RFP',
+                        'category': category,
+                        'agency_name': district_name,
+                        'posted_date': datetime.now().isoformat(),
+                        'due_date': None,
+                        'source_url': url,
+                        'source_portal': 'school_district',
+                        'is_relevant': is_relevant,
+                        'relevance_score': score
+                    })
+
+        return results[:30]  # Limit per district
+
+    def scrape_quick_quotes(self, max_results: int = 100) -> List[Dict]:
+        """
+        Scrape quick quote and small purchase opportunities.
+        These are faster-turnaround opportunities that don't require full RFP responses:
+        - Quotes (RFQ) - typically 3-7 day response
+        - Informal bids - often same day or 24-48 hours
+        - Micro-purchases - under threshold, immediate
+        - Emergency procurements - urgent needs
+        """
+        results = []
+
+        logger.info("Scraping Quick Quote and Small Purchase opportunities...")
+
+        # Quick quote keywords to look for
+        quick_keywords = [
+            'quote', 'quotation', 'rfq', 'request for quote',
+            'informal bid', 'informal quote', 'quick quote',
+            'micro-purchase', 'micropurchase', 'small purchase',
+            'emergency', 'urgent', 'expedited',
+            'sole source', 'single source',
+            'price quote', 'competitive quote'
+        ]
+
+        # County quick quote pages (many have separate informal bid sections)
+        quick_quote_sources = [
+            # Counties with dedicated quick quote / informal bid pages
+            ('Orange County Quotes', 'https://www.orangecountyfl.net/FinancialServices/InformalQuotes.aspx'),
+            ('Hillsborough Quotes', 'https://www.hillsboroughcounty.org/en/residents/property-owners-and-renters/purchasing/informal-quotes'),
+            ('Broward Quick Quotes', 'https://www.broward.org/Purchasing/Pages/QuickQuotes.aspx'),
+            ('Miami-Dade Small Purchase', 'https://www.miamidade.gov/global/service.page?Mduid_service=ser1510865562461500'),
+            ('Palm Beach Quotes', 'https://discover.pbcgov.org/Purchasing/Pages/Quotes.aspx'),
+            ('Pinellas Informal Bids', 'https://www.pinellascounty.org/purchase/informalBids.htm'),
+            ('Duval Quick Quotes', 'https://www.coj.net/departments/finance/procurement/quick-quotes'),
+            ('Lee County Quotes', 'https://www.leegov.com/procurement/quotes'),
+            ('Polk County Quotes', 'https://www.polk-county.net/purchasing/informal-quotes'),
+            ('Brevard Quotes', 'https://www.brevardfl.gov/CentralServices/Purchasing/Quotes'),
+            ('Volusia Quotes', 'https://www.volusia.org/services/government/purchasing-contracts/informal-quotes/'),
+            ('Sarasota Quotes', 'https://www.scgov.net/government/procurement-services/informal-quotes'),
+            ('Seminole Quotes', 'https://www.seminolecountyfl.gov/departments-services/county-manager/purchasing-contracts/informal-quotes.stml'),
+            ('Osceola Quotes', 'https://www.osceola.org/agencies-departments/procurement-services/quotes/'),
+            ('Lake County Quotes', 'https://www.lakecountyfl.gov/offices/procurement_services/informal_quotes.aspx'),
+            ('Manatee Quotes', 'https://www.mymanatee.org/departments/procurement/quick_quotes'),
+            ('Collier Quotes', 'https://www.colliercountyfl.gov/your-government/divisions-a-e/administrative-services/procurement-services/quotes'),
+            ('St. Lucie Quotes', 'https://www.stlucieco.gov/departments-services/a-z/purchasing-contracting/quotes'),
+            ('Martin Quotes', 'https://www.martin.fl.us/informal-quotes'),
+            ('Alachua Quotes', 'https://procurement.alachuacounty.us/quotes'),
+            ('Leon Quotes', 'https://cms.leoncountyfl.gov/coadmin/Purchasing/Informal-Quotes'),
+            ('Escambia Quotes', 'https://myescambia.com/our-services/purchasing/informal-quotes'),
+            ('Bay Quotes', 'https://www.baycountyfl.gov/182/Informal-Quotes'),
+            ('Marion Quotes', 'https://www.marioncountyfl.org/departments-agencies/purchasing-contracts/quotes'),
+            ('Pasco Quotes', 'https://www.pascocountyfl.net/177/Informal-Quotes'),
+        ]
+
+        for source_name, url in quick_quote_sources:
+            try:
+                response = requests.get(url, headers=HEADERS, timeout=30)
+                if response.status_code == 200:
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    agency_name = source_name.replace(' Quotes', '').replace(' Quick Quotes', '').replace(' Informal Bids', '').replace(' Small Purchase', '')
+
+                    # Look for quote-related links and content
+                    quotes = self._parse_quick_quote_page(soup, agency_name, url, quick_keywords)
+                    results.extend(quotes)
+
+            except Exception as e:
+                logger.debug(f"Error scraping {source_name}: {e}")
+
+        # Also search existing portal results for quick-response indicators
+        # Look through regular bids for urgency keywords
+        for source_name, url in quick_quote_sources[:10]:  # Sample from main portals
+            try:
+                response = requests.get(url, headers=HEADERS, timeout=30)
+                if response.status_code == 200:
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    text_content = soup.get_text().lower()
+
+                    # Check if page mentions quotes or quick turnaround
+                    if any(kw in text_content for kw in quick_keywords):
+                        agency_name = source_name.replace(' Quotes', '')
+                        quotes = self._parse_quick_quote_page(soup, agency_name, url, quick_keywords)
+                        results.extend(quotes)
+
+            except Exception as e:
+                logger.debug(f"Error checking {source_name} for quotes: {e}")
+
+        return results
+
+    def _parse_quick_quote_page(self, soup: BeautifulSoup, agency_name: str, base_url: str, quick_keywords: List[str]) -> List[Dict]:
+        """Parse a page for quick quote opportunities."""
+        results = []
+
+        # Look for links that might be quotes
+        links = soup.find_all('a', href=True)
+
+        for link in links:
+            href = link.get('href', '').lower()
+            text = link.get_text(strip=True)
+            text_lower = text.lower()
+
+            # Check if this looks like a quote opportunity
+            is_quote = any(kw in text_lower or kw in href for kw in quick_keywords)
+
+            if is_quote and text and len(text) > 10 and len(text) < 300:
+                # Skip navigation links
+                skip_words = ['click here', 'read more', 'learn more', 'view all', 'back to', 'home', 'menu', 'contact']
+                if any(skip in text_lower for skip in skip_words):
+                    continue
+
+                is_relevant, score, category = self.calculate_relevance(text)
+                full_url = link.get('href')
+                if not full_url.startswith('http'):
+                    full_url = urljoin(base_url, full_url)
+
+                # Determine RFP type based on keywords
+                rfp_type = 'Quote'
+                if 'emergency' in text_lower or 'urgent' in text_lower:
+                    rfp_type = 'Emergency'
+                elif 'sole source' in text_lower or 'single source' in text_lower:
+                    rfp_type = 'Sole Source'
+                elif 'micro' in text_lower:
+                    rfp_type = 'Micro-Purchase'
+                elif 'rfq' in text_lower:
+                    rfp_type = 'RFQ'
+                elif 'informal' in text_lower:
+                    rfp_type = 'Informal Bid'
+
+                # Estimate response deadline
+                response_hours = 72  # Default 3 days for quotes
+                if 'emergency' in text_lower or 'urgent' in text_lower:
+                    response_hours = 24
+                elif 'same day' in text_lower:
+                    response_hours = 8
+                elif 'micro' in text_lower:
+                    response_hours = 24
+
+                results.append({
+                    'title': text,
+                    'description': '',
+                    'solicitation_number': None,
+                    'rfp_type': rfp_type,
+                    'category': category,
+                    'agency_name': agency_name,
+                    'posted_date': datetime.now().isoformat(),
+                    'due_date': None,
+                    'source_url': full_url,
+                    'source_portal': 'quick_quote',
+                    'is_relevant': is_relevant,
+                    'relevance_score': score,
+                    'is_quick_response': True,
+                    'response_deadline_hours': response_hours
+                })
+
+        # Also check tables
+        tables = soup.find_all('table')
+        for table in tables:
+            rows = table.find_all('tr')[1:]  # Skip header
+            for row in rows[:30]:
+                cells = row.find_all('td')
+                if len(cells) >= 1:
+                    cell_text = cells[0].get_text(strip=True)
+                    cell_text_lower = cell_text.lower()
+
+                    is_quote = any(kw in cell_text_lower for kw in quick_keywords)
+
+                    if is_quote and cell_text and len(cell_text) > 10:
+                        link = cells[0].find('a')
+                        url = base_url
+                        if link and link.get('href'):
+                            href = link.get('href')
+                            url = href if href.startswith('http') else urljoin(base_url, href)
+
+                        is_relevant, score, category = self.calculate_relevance(cell_text)
+
+                        results.append({
+                            'title': cell_text,
+                            'description': '',
+                            'solicitation_number': None,
+                            'rfp_type': 'Quote',
+                            'category': category,
+                            'agency_name': agency_name,
+                            'posted_date': datetime.now().isoformat(),
+                            'due_date': None,
+                            'source_url': url,
+                            'source_portal': 'quick_quote',
+                            'is_relevant': is_relevant,
+                            'relevance_score': score,
+                            'is_quick_response': True,
+                            'response_deadline_hours': 72
+                        })
+
+        return results[:20]  # Limit per source
+
     def scrape_florida_bids_direct(self) -> List[Dict]:
         """
         Scrape direct from Florida county bid pages.
@@ -225,6 +1093,7 @@ class RFPDiscoveryEngine:
 
         # Direct county bid pages
         county_bid_urls = [
+            # Original 10 counties
             ('Marion County', 'https://www.marioncountyfl.org/departments-agencies/purchasing-contracts/bids-rfps'),
             ('Alachua County', 'https://procurement.alachuacounty.us/'),
             ('Leon County', 'https://cms.leoncountyfl.gov/coadmin/Purchasing/Bids-and-Proposals'),
@@ -235,6 +1104,53 @@ class RFPDiscoveryEngine:
             ('Lee County', 'https://www.leegov.com/procurement/bids'),
             ('Polk County', 'https://www.polk-county.net/purchasing/current-bids-and-proposals'),
             ('Seminole County', 'https://www.seminolecountyfl.gov/departments-services/county-manager/purchasing-contracts/current-bids-proposals.stml'),
+            # Additional counties
+            ('Escambia County', 'https://myescambia.com/our-services/purchasing/current-bids'),
+            ('Santa Rosa County', 'https://www.santarosa.fl.gov/bids.aspx'),
+            ('Bay County', 'https://www.baycountyfl.gov/181/Current-Bids'),
+            ('Okaloosa County', 'https://www.myokaloosa.com/purchasing/bids'),
+            ('Walton County', 'https://www.co.walton.fl.us/195/Current-Bids'),
+            ('Jackson County', 'https://www.jacksoncountyfl.gov/departments/purchasing'),
+            ('Gadsden County', 'https://www.gadsdencountyfl.gov/purchasing'),
+            ('Wakulla County', 'https://www.mywakulla.com/government/purchasing'),
+            ('Jefferson County', 'https://www.jeffersoncountyfl.gov/purchasing'),
+            ('Madison County', 'https://www.madisoncountyfl.com/purchasing'),
+            ('Taylor County', 'https://www.taylorcountygov.com/purchasing'),
+            ('Suwannee County', 'https://www.suwanneecountyfl.gov/purchasing'),
+            ('Columbia County', 'https://www.columbiacountyfla.com/purchasing'),
+            ('Baker County', 'https://www.bakercountyfl.org/purchasing'),
+            ('Nassau County', 'https://www.nassaucountyfl.com/151/Purchasing'),
+            ('Putnam County', 'https://www.putnam-fl.com/purchasing/'),
+            ('Flagler County', 'https://www.flaglercounty.gov/government/county-departments/purchasing-division/current-bids'),
+            ('St. Johns County', 'https://www.sjcfl.us/Purchasing/CurrentBids.aspx'),
+            ('Clay County', 'https://www.claycountygov.com/government/purchasing/current-bids'),
+            ('Bradford County', 'https://www.bradfordcountyfl.gov/purchasing'),
+            ('Union County', 'https://www.unioncounty-fl.gov/purchasing'),
+            ('Gilchrist County', 'https://www.gilchrist.fl.us/purchasing'),
+            ('Levy County', 'https://www.levycounty.org/purchasing'),
+            ('Dixie County', 'https://www.dixiecounty.org/purchasing'),
+            ('Citrus County', 'https://www.citrusbocc.com/purchasing'),
+            ('Hernando County', 'https://www.hernandocounty.us/departments/purchasing'),
+            ('Pasco County', 'https://www.pascocountyfl.net/176/Purchasing'),
+            ('Sumter County', 'https://www.sumtercountyfl.gov/193/Purchasing'),
+            ('Lake County', 'https://www.lakecountyfl.gov/offices/procurement_services/current_bids.aspx'),
+            ('Orange County', 'https://www.orangecountyfl.net/FinancialServices/Procurement.aspx'),
+            ('Osceola County', 'https://www.osceola.org/agencies-departments/procurement-services/bids-and-quotes/'),
+            ('Indian River County', 'https://www.ircgov.com/departments/general_services/purchasing/solicitations.htm'),
+            ('St. Lucie County', 'https://www.stlucieco.gov/departments-services/a-z/purchasing-contracting/solicitations'),
+            ('Martin County', 'https://www.martin.fl.us/current-solicitations'),
+            ('Okeechobee County', 'https://www.co.okeechobee.fl.us/purchasing'),
+            ('Glades County', 'https://www.gladescountyfl.gov/purchasing'),
+            ('Hendry County', 'https://www.hendryfla.net/purchasing/'),
+            ('Charlotte County', 'https://www.charlottecountyfl.gov/departments/purchasing/solicitations.html'),
+            ('DeSoto County', 'https://www.desotobocc.com/departments/purchasing'),
+            ('Hardee County', 'https://www.hardeecounty.net/purchasing'),
+            ('Highlands County', 'https://www.highlandsfl.gov/125/Purchasing'),
+            ('Manatee County', 'https://www.mymanatee.org/departments/procurement/current_bids'),
+            ('Monroe County', 'https://www.monroecounty-fl.gov/411/Current-Solicitations'),
+            ('Miami-Dade County', 'https://www.miamidade.gov/global/service.page?Mduid_service=ser1510865562461499'),
+            ('Broward County', 'https://www.broward.org/Purchasing/Pages/CurrentSolicitations.aspx'),
+            ('Palm Beach County', 'https://discover.pbcgov.org/Purchasing/Pages/default.aspx'),
         ]
 
         for county_name, url in county_bid_urls:
@@ -494,12 +1410,16 @@ class RFPDiscoveryEngine:
                 source_url=rfp_data.get('source_url'),
                 source_portal=rfp_data.get('source_portal'),
                 is_relevant=1 if rfp_data.get('is_relevant') else 0,
-                relevance_score=rfp_data.get('relevance_score', 0)
+                relevance_score=rfp_data.get('relevance_score', 0),
+                is_quick_response=1 if rfp_data.get('is_quick_response') else 0,
+                response_deadline_hours=rfp_data.get('response_deadline_hours')
             )
 
             if rfp_id:
                 saved_count += 1
-                if rfp_data.get('is_relevant'):
+                if rfp_data.get('is_quick_response'):
+                    logger.info(f"  + QUICK: {rfp_data['title'][:50]}... ({rfp_data.get('rfp_type', 'Quote')})")
+                elif rfp_data.get('is_relevant'):
                     logger.info(f"  + RELEVANT: {rfp_data['title'][:60]}... (score: {rfp_data.get('relevance_score', 0):.1f})")
 
         return saved_count
@@ -524,6 +1444,10 @@ class RFPDiscoveryEngine:
             ('Bonfire', self.scrape_bonfire),
             ('DemandStar', self.scrape_demandstar),
             ('VendorLink', self.scrape_vendorlink),
+            ('BidNet', self.scrape_bidnet),
+            ('MFMP', self.scrape_mfmp),
+            ('School Districts', self.scrape_school_districts),
+            ('Quick Quotes', self.scrape_quick_quotes),
         ]
 
         for portal_name, scrape_func in portals:

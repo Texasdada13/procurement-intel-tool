@@ -184,6 +184,8 @@ def init_database():
             attachments_url TEXT,
             is_relevant INTEGER DEFAULT 0,  -- 1 if matches IT/consulting keywords
             relevance_score REAL DEFAULT 0,
+            is_quick_response INTEGER DEFAULT 0,  -- 1 if quote/micro-purchase (fast turnaround)
+            response_deadline_hours INTEGER,  -- Estimated hours to respond (24, 48, 72, etc.)
             notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -191,6 +193,17 @@ def init_database():
             FOREIGN KEY (entity_id) REFERENCES entities(id)
         )
     ''')
+
+    # Add columns if they don't exist (for existing databases)
+    try:
+        cursor.execute('ALTER TABLE rfps ADD COLUMN is_quick_response INTEGER DEFAULT 0')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
+    try:
+        cursor.execute('ALTER TABLE rfps ADD COLUMN response_deadline_hours INTEGER')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
 
     # RFP categories/keywords for matching
     cursor.execute('''
@@ -822,8 +835,9 @@ def create_rfp(title: str, **kwargs) -> int:
             INSERT INTO rfps (entity_id, title, description, solicitation_number, rfp_type,
                             category, status, posted_date, due_date, estimated_value,
                             source_url, source_portal, contact_name, contact_email,
-                            contact_phone, attachments_url, is_relevant, relevance_score, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            contact_phone, attachments_url, is_relevant, relevance_score,
+                            is_quick_response, response_deadline_hours, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (kwargs.get('entity_id'), title, kwargs.get('description'),
               kwargs.get('solicitation_number'), kwargs.get('rfp_type'),
               kwargs.get('category'), kwargs.get('status', 'open'),
@@ -832,7 +846,8 @@ def create_rfp(title: str, **kwargs) -> int:
               kwargs.get('source_portal'), kwargs.get('contact_name'),
               kwargs.get('contact_email'), kwargs.get('contact_phone'),
               kwargs.get('attachments_url'), kwargs.get('is_relevant', 0),
-              kwargs.get('relevance_score', 0), kwargs.get('notes')))
+              kwargs.get('relevance_score', 0), kwargs.get('is_quick_response', 0),
+              kwargs.get('response_deadline_hours'), kwargs.get('notes')))
         conn.commit()
         rfp_id = cursor.lastrowid
     except sqlite3.IntegrityError:
@@ -861,7 +876,8 @@ def get_rfp(rfp_id: int) -> Optional[Dict]:
     return dict(row) if row else None
 
 
-def get_all_rfps(status: str = None, relevant_only: bool = False, category: str = None) -> List[Dict]:
+def get_all_rfps(status: str = None, relevant_only: bool = False, category: str = None,
+                  quick_only: bool = False, rfp_type: str = None, search: str = None) -> List[Dict]:
     """Get all RFPs with optional filtering."""
     conn = get_connection()
     cursor = conn.cursor()
@@ -885,7 +901,19 @@ def get_all_rfps(status: str = None, relevant_only: bool = False, category: str 
         query += ' AND r.category = ?'
         params.append(category)
 
-    query += ' ORDER BY r.due_date ASC, r.relevance_score DESC'
+    if quick_only:
+        query += ' AND r.is_quick_response = 1'
+
+    if rfp_type:
+        query += ' AND r.rfp_type = ?'
+        params.append(rfp_type)
+
+    if search:
+        query += ' AND (r.title LIKE ? OR r.description LIKE ? OR e.name LIKE ?)'
+        search_pattern = f'%{search}%'
+        params.extend([search_pattern, search_pattern, search_pattern])
+
+    query += ' ORDER BY r.is_quick_response DESC, r.due_date ASC, r.relevance_score DESC'
 
     cursor.execute(query, params)
     rows = cursor.fetchall()
