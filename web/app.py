@@ -6,6 +6,8 @@ Provides dashboard and management interface for opportunities.
 import os
 import sys
 import logging
+import threading
+import webbrowser
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, Response
 import csv
@@ -1110,6 +1112,13 @@ def init_app():
     logger.info("Application initialized")
 
 
+def open_browser():
+    """Open browser after a short delay to let server start."""
+    webbrowser.open('http://localhost:5003')
+
+
 if __name__ == '__main__':
     init_app()
-    app.run(debug=True, port=5003)
+    # Open browser automatically after 1.5 seconds
+    threading.Timer(1.5, open_browser).start()
+    app.run(debug=True, port=5003, use_reloader=False)
